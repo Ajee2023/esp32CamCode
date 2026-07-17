@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#15181b">
+  <title>Continuous Feeder Control</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">UNO Q / LINE 01</p>
+      <h1>Continuous Feeder</h1>
+    </div>
+    <div id="connection" class="connection offline" role="status" aria-live="polite">
+      <span class="signal" aria-hidden="true"></span>
+      <span id="connectionText">Connecting</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="status-strip" aria-label="Feeder status">
+      <div class="metric status-metric">
+        <span class="metric-label">Motor status</span>
+        <strong id="motorStatus" class="status-value">Stopped</strong>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Output</span>
+        <strong><span id="percentValue">50</span><small>%</small></strong>
+      </div>
+      <div class="metric">
+        <span class="metric-label">PWM value</span>
+        <strong id="pwmValue">0</strong>
+      </div>
+    </section>
+
+    <section class="control-panel" aria-labelledby="speedHeading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Motor output</p>
+          <h2 id="speedHeading">Feed speed</h2>
+        </div>
+        <output id="speedOutput" for="speedSlider">50%</output>
+      </div>
+
+      <input id="speedSlider" type="range" min="0" max="100" value="50"
+             step="1" aria-label="Motor speed percentage">
+      <div class="range-labels" aria-hidden="true"><span>0</span><span>100%</span></div>
+
+      <div class="actions">
+        <button id="startButton" class="button start" type="button">
+          <span class="play-icon" aria-hidden="true"></span> Start
+        </button>
+        <button id="stopButton" class="button stop" type="button">
+          <span class="stop-icon" aria-hidden="true"></span> Stop
+        </button>
+      </div>
+    </section>
+
+    <section class="emergency-panel" aria-labelledby="emergencyHeading">
+      <div>
+        <p class="eyebrow danger-label">Safety control</p>
+        <h2 id="emergencyHeading">Emergency stop</h2>
+      </div>
+      <button id="emergencyButton" class="emergency-button" type="button">
+        <span aria-hidden="true">!</span> Emergency Stop
+      </button>
+      <button id="resetButton" class="reset-button" type="button" hidden>
+        Reset E-stop
+      </button>
+    </section>
+
+    <p id="notice" class="notice" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

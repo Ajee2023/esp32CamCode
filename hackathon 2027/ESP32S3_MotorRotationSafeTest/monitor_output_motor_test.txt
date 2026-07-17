@@ -1,0 +1,31 @@
+--- Terminal on COM4 | 115200 8-N-1
+--- Available filters and text transformations: debug, default, direct, esp32_exception_decoder, hexlify, log2file, nocontrol, printable, send_on_enter, time
+--- More details at https://bit.ly/pio-monitor-filters
+--- Quit: Ctrl+C | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0x2b (SPI_FAST_FLASH_BOOT)
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3808,len:0x4bc
+load:0x403c9700,len:0xbd8
+load:0x403cc700,len:0x2a0c
+entry 0x403c98d0
+
+ESP32-S3 L298N safe motor rotation test
+Motor is OFF during setup. PWM duty is 0.
+No movement starts until after the 5 second safety wait.
+Motor Test Ready - Motor OFF
+Safety wait: motor will remain OFF for 5 seconds.
+Motor Test Ready - Start in 5
+Motor Test Ready - Start in 4
+Motor Test Ready - Start in 3
+Motor Test Ready - Start in 2
+Motor Test Ready - Start in 1
+Clockwise - 800ms low speed
+PWM duty: 80
+Stopped - 2 sec pause
+Counter-clockwise - 800ms low speed
+PWM duty: 80
+Test Complete - Motor OFF
+Motor rotation test complete. Motor is OFF.

@@ -1,0 +1,120 @@
+--- Terminal on COM4 | 115200 8-N-1
+--- Available filters and text transformations: debug, default, direct, esp32_exception_decoder, hexlify, log2file, nocontrol, printable, send_on_enter, time
+--- More details at https://bit.ly/pio-monitor-filters
+--- Quit: Ctrl+C | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Classifying | Gemini AI
+LCD: AI RESULT | Garbage
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Classifying | Gemini AI
+LCD: AI RESULT | Garbage
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Classifying | Gemini AI
+LCD: AI RESULT | Garbage
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Classifying | Gemini AI
+LCD: AI RESULT | Garbage
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Test failed | curl: (28) Conne
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Test failed | curl: (28) Conne
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Test failed | curl: (28) Opera
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Classifying | Gemini AI
+LCD: AI RESULT | Garbage
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Classifying | Gemini AI
+LCD: AI RESULT | Organic
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Classifying | Gemini AI
+LCD: AI RESULT | Garbage
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed
+LCD: Preparing | Motor disabled
+LCD: Capturing | ESP32-CAM
+LCD: Classifying | Gemini AI
+LCD: AI RESULT | Recycle
+Opening lid servo.
+LCD: Lid | Opening
+Closing lid servo.
+LCD: Lid | Closing
+LCD: Lid | Closed

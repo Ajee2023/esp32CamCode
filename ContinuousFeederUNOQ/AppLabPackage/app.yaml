@@ -1,0 +1,5 @@
+name: Continuous Feeder
+description: Control a TB6612FNG continuous feeder from an Arduino UNO Q web interface
+
+bricks:
+  - arduino:web_ui

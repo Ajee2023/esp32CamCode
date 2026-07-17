@@ -1,376 +1,132 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>AI Drone Navigation</title>
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
   <style>
     * { box-sizing: border-box; }
-    
-    body { 
-      margin: 0; 
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: #f0f0f0;
-    }
-    
-    #container {
-      display: flex;
-      height: 100vh;
-      gap: 10px;
-      padding: 10px;
-    }
-    
-    #map { 
-      flex: 1;
-      height: 100%;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    }
-    
-    #panel {
-      width: 380px;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      display: flex;
-      flex-direction: column;
-      padding: 20px;
-      gap: 15px;
-      overflow-y: auto;
-    }
-    
-    button {
-      width: 100%;
-      padding: 12px;
-      font-size: 16px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: bold;
-      transition: transform 0.2s;
-    }
-    
+    body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f0f0; }
+    #container { display: flex; height: 100vh; gap: 10px; padding: 10px; }
+    #map { flex: 1; height: 100%; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+    #panel { width: 380px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); display: flex; flex-direction: column; padding: 20px; gap: 15px; overflow-y: auto; }
+    button { width: 100%; padding: 12px; font-size: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: transform 0.2s; }
     button:hover { transform: scale(1.02); }
     button:active { transform: scale(0.98); }
-    
-    .status-card {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 15px;
-      border-radius: 6px;
-      text-align: center;
-    }
-    
-    .status-label {
-      font-size: 12px;
-      opacity: 0.9;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    
-    .status-text {
-      font-size: 24px;
-      font-weight: bold;
-      margin-top: 5px;
-    }
-    
-    .progress-section {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 6px;
-      border-left: 4px solid #667eea;
-    }
-    
-    .progress-label {
-      font-size: 12px;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 8px;
-      font-weight: 600;
-    }
-    
-    .progress-bar {
-      width: 100%;
-      height: 24px;
-      background: #e0e0e0;
-      border-radius: 12px;
-      overflow: hidden;
-      margin-bottom: 10px;
-    }
-    
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-      width: 0%;
-      transition: width 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 11px;
-      font-weight: bold;
-    }
-    
-    .progress-text {
-      display: flex;
-      justify-content: space-between;
-      font-size: 13px;
-      color: #333;
-      margin-top: 8px;
-    }
-    
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px;
-      border-bottom: 1px solid #eee;
-      font-size: 13px;
-    }
-    
-    .info-row:last-child {
-      border-bottom: none;
-    }
-    
-    .info-label {
-      color: #666;
-      font-weight: 500;
-    }
-    
-    .info-value {
-      color: #333;
-      font-weight: 600;
-      font-family: 'Courier New', monospace;
-    }
-    
-    .info-section {
-      background: #f8f9fa;
-      padding: 12px;
-      border-radius: 6px;
-      font-size: 12px;
-    }
-    
-    .info-section-title {
-      font-weight: 700;
-      color: #667eea;
-      margin-bottom: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .destination-pin {
-      font-size: 30px;
-      margin-bottom: 5px;
-    }
-    
-    .time-display {
-      font-size: 11px;
-      color: #999;
-      margin-top: 5px;
-    }
-
+    .status-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 6px; text-align: center; }
+    .status-label { font-size: 12px; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; }
+    .status-text { font-size: 24px; font-weight: bold; margin-top: 5px; }
     .status-idle { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
     .status-flying { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
     .status-arrived { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
     .status-error { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
     .status-taking_off { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
-
-    .message-box {
-      min-height: 44px;
-      border-radius: 6px;
-      padding: 10px 12px;
-      font-size: 13px;
-      line-height: 1.4;
-      background: #eef3ff;
-      color: #234;
-      border: 1px solid #cdd9ff;
+    .status-surveying { background: linear-gradient(135deg, #2a9d8f 0%, #4d96ff 100%); }
+    .message-box { min-height: 44px; border-radius: 6px; padding: 10px 12px; font-size: 13px; line-height: 1.4; background: #eef3ff; color: #234; border: 1px solid #cdd9ff; }
+    .message-box.error { background: #fff1f1; color: #8a1f1f; border-color: #f3b4b4; }
+    .info-section { background: #f8f9fa; padding: 12px; border-radius: 6px; font-size: 12px; }
+    .info-section-title { font-weight: 700; color: #667eea; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .info-row { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #666; font-weight: 500; }
+    .info-value { color: #333; font-weight: 600; font-family: 'Courier New', monospace; }
+    .mode-grid, .speed-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .speed-grid { grid-template-columns: repeat(3, 1fr); margin-top: 10px; }
+    .mode-button, .mini-button { width: 100%; padding: 10px 12px; border: none; border-radius: 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer; color: white; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .mode-button.active, .speed-button.active { box-shadow: 0 0 0 3px rgba(29, 53, 87, 0.14); }
+    .mode-green { background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%); }
+    .mode-blue { background: linear-gradient(135deg, #2d6cdf 0%, #4d96ff 100%); }
+    .mode-garbage { background: linear-gradient(135deg, #6c757d 0%, #343a40 100%); }
+    .mode-zone { background: linear-gradient(135deg, #ef476f 0%, #ff7f51 100%); }
+    .mini-button { background: linear-gradient(135deg, #6d72c3 0%, #8352a5 100%); }
+    .speed-button.active {
+      background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%);
+      color: #ffffff;
     }
-
-    .message-box.error {
-      background: #fff1f1;
-      color: #8a1f1f;
-      border-color: #f3b4b4;
-    }
-
-    .weather-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-    }
-
-    .weather-card {
-      background: #eef3ff;
-      border-radius: 8px;
-      padding: 10px 8px;
-      text-align: center;
-    }
-
-    .weather-value {
-      font-size: 20px;
-      font-weight: 700;
-      color: #1d3557;
-    }
-
-    .weather-name {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      color: #5a6a85;
-      margin-top: 4px;
-    }
-
-    .weather-controls {
+    .button-content { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+    .button-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
+    .button-icon svg { width: 22px; height: 22px; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28)); }
+    .tool-hint { margin-top: 10px; font-size: 12px; line-height: 1.45; color: #52627c; min-height: 34px; }
+    .weather-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .weather-card { background: #eef3ff; border-radius: 8px; padding: 10px 8px; text-align: center; }
+    .weather-value { font-size: 20px; font-weight: 700; color: #1d3557; }
+    .weather-name { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #5a6a85; margin-top: 4px; }
+    .weather-controls { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .weather-slider-row { display: grid; grid-template-columns: 48px 1fr 42px; gap: 10px; align-items: center; font-size: 12px; color: #4f5d75; }
+    .weather-slider-row input[type="range"] { width: 100%; }
+    .loop-track { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+    .loop-step { border-radius: 999px; padding: 10px 6px; text-align: center; font-size: 11px; font-weight: 700; text-transform: uppercase; background: #e9edf5; color: #64748b; }
+    .loop-step.active { background: linear-gradient(135deg, #2a9d8f 0%, #4d96ff 100%); color: white; }
+    .loop-reason { margin-top: 10px; font-size: 12px; color: #516079; min-height: 34px; }
+    .progress-section { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #667eea; }
+    .progress-label { font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 8px; font-weight: 600; }
+    .progress-bar { width: 100%; height: 24px; background: #e0e0e0; border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); width: 0%; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: bold; }
+    .progress-text { display: flex; justify-content: space-between; font-size: 13px; color: #333; margin-top: 8px; }
+    .dispatch-summary { display: flex; flex-direction: column; gap: 10px; }
+    .dispatch-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .dispatch-pill { border-radius: 12px; padding: 10px 8px; text-align: center; background: #eef3ff; }
+    .dispatch-pill strong { display: block; font-size: 18px; color: #1d3557; }
+    .dispatch-pill span { font-size: 11px; text-transform: uppercase; color: #5d6b86; }
+    .address-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
+    .address-item { padding: 10px 12px; border-radius: 12px; background: white; border: 1px solid #e4e8f4; }
+    .address-item-title { font-size: 12px; font-weight: 700; color: #1d3557; margin-bottom: 4px; text-transform: capitalize; }
+    .address-item-copy { font-size: 12px; color: #5d6b86; line-height: 1.4; }
+    .target-pin { width: 20px; height: 20px; background: #d62828; border: 2px solid #fff; border-radius: 50% 50% 50% 0; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28); transform: rotate(-45deg); }
+    .drone-marker {
+      width: 42px;
+      height: 42px;
       display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .weather-slider-row {
-      display: grid;
-      grid-template-columns: 48px 1fr 42px;
-      gap: 10px;
       align-items: center;
-      font-size: 12px;
-      color: #4f5d75;
+      justify-content: center;
+      filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.28));
     }
-
-    .weather-slider-row input[type="range"] {
-      width: 100%;
+    .drone-marker svg {
+      width: 42px;
+      height: 42px;
+      display: block;
     }
-
-    .loop-track {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    .loop-step {
-      border-radius: 999px;
-      padding: 10px 6px;
-      text-align: center;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      background: #e9edf5;
-      color: #64748b;
-      transition: all 0.25s ease;
-    }
-
-    .loop-step.active {
-      background: linear-gradient(135deg, #2a9d8f 0%, #4d96ff 100%);
-      color: white;
-      transform: translateY(-1px);
-      box-shadow: 0 6px 14px rgba(77, 150, 255, 0.22);
-    }
-
-    .loop-reason {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #516079;
-      min-height: 34px;
-    }
-
-    .target-pin {
-      width: 20px;
-      height: 20px;
-      background: #d62828;
-      border: 2px solid #fff;
-      border-radius: 50% 50% 50% 0;
-      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
-      transform: rotate(-45deg);
-    }
-
-    .confetti-layer {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      overflow: hidden;
-      z-index: 9999;
-    }
-
-    .confetti-piece {
-      position: absolute;
-      top: -24px;
-      width: 10px;
-      height: 18px;
-      opacity: 0.95;
-      animation: confetti-fall linear forwards;
-      will-change: transform, opacity;
-    }
-
-    @keyframes confetti-fall {
-      0% {
-        transform: translate3d(0, 0, 0) rotate(0deg);
-        opacity: 1;
-      }
-      100% {
-        transform: translate3d(var(--drift, 0px), 105vh, 0) rotate(var(--spin, 540deg));
-        opacity: 0;
-      }
-    }
-    
   </style>
 </head>
-
 <body>
-
-<div class="confetti-layer" id="confettiLayer"></div>
-
 <div id="container">
   <div id="map"></div>
-  
   <div id="panel">
     <button onclick="promptForAddress()">GO TO ADDRESS</button>
-    <button onclick="startDrone()">🚁 TAKEOFF</button>
-    
+    <button onclick="startDrone()">TAKEOFF</button>
     <div class="status-card" id="statusCard">
       <div class="status-label">Flight Status</div>
       <div class="status-text">Ready</div>
     </div>
+    <div class="message-box" id="messageBox">Waiting for AirSim command...</div>
 
-    <div class="message-box" id="messageBox">
-      Waiting for AirSim command...
+    <div class="info-section">
+      <div class="info-section-title">Waste Bin Planner</div>
+      <div class="mode-grid">
+        <button type="button" class="mode-button mode-green" id="modeGreen" onclick="setMapMode('green')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#1f1f1f" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#2a9d8f" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#1f1f1f"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#1f1f1f"/><circle cx="46" cy="47.5" r="2" fill="#7fdad0"/></svg></span><span>Green Bin</span></span></button>
+        <button type="button" class="mode-button mode-blue" id="modeBlue" onclick="setMapMode('blue')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#1f1f1f" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#2d6cdf" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#1f1f1f"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#1f1f1f"/><circle cx="46" cy="47.5" r="2" fill="#bcd4ff"/></svg></span><span>Blue Bin</span></span></button>
+        <button type="button" class="mode-button mode-garbage" id="modeGarbage" onclick="setMapMode('garbage')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#111111" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#656d76" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#111111"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#111111"/><circle cx="46" cy="47.5" r="2" fill="#d7dce1"/></svg></span><span>Black Bin</span></span></button>
+        <button type="button" class="mode-button mode-zone" id="modeZone" onclick="setMapMode('zone')">Define Zone</button>
+      </div>
+      <div class="mode-grid" style="margin-top: 8px;">
+        <button type="button" class="mini-button" onclick="clearMapMode()">Exit Tool</button>
+        <button type="button" class="mini-button" onclick="clearAllBins()">Clear All Bins</button>
+      </div>
+      <div class="tool-hint" id="toolHint">Pick a tool, then click the GPS map to place bins or choose a two-corner dispatch zone.</div>
     </div>
 
     <div class="info-section">
       <div class="info-section-title">Weather Feedback Loop</div>
       <div class="weather-grid">
-        <div class="weather-card">
-          <div class="weather-value" id="rainValue">0%</div>
-          <div class="weather-name">Rain</div>
-        </div>
-        <div class="weather-card">
-          <div class="weather-value" id="windValue">0%</div>
-          <div class="weather-name">Wind</div>
-        </div>
-        <div class="weather-card">
-          <div class="weather-value" id="snowValue">0%</div>
-          <div class="weather-name">Snow</div>
-        </div>
+        <div class="weather-card"><div class="weather-value" id="rainValue">0%</div><div class="weather-name">Rain</div></div>
+        <div class="weather-card"><div class="weather-value" id="windValue">0%</div><div class="weather-name">Wind</div></div>
+        <div class="weather-card"><div class="weather-value" id="snowValue">0%</div><div class="weather-name">Snow</div></div>
       </div>
       <div class="weather-controls">
-        <label class="weather-slider-row">
-          <span>Rain</span>
-          <input type="range" min="0" max="100" value="0" id="rainSlider" oninput="onWeatherSliderInput()">
-          <strong id="rainSliderValue">0%</strong>
-        </label>
-        <label class="weather-slider-row">
-          <span>Wind</span>
-          <input type="range" min="0" max="100" value="0" id="windSlider" oninput="onWeatherSliderInput()">
-          <strong id="windSliderValue">0%</strong>
-        </label>
-        <label class="weather-slider-row">
-          <span>Snow</span>
-          <input type="range" min="0" max="100" value="0" id="snowSlider" oninput="onWeatherSliderInput()">
-          <strong id="snowSliderValue">0%</strong>
-        </label>
+        <label class="weather-slider-row"><span>Rain</span><input type="range" min="0" max="100" value="0" id="rainSlider" oninput="onWeatherSliderInput()"><strong id="rainSliderValue">0%</strong></label>
+        <label class="weather-slider-row"><span>Wind</span><input type="range" min="0" max="100" value="0" id="windSlider" oninput="onWeatherSliderInput()"><strong id="windSliderValue">0%</strong></label>
+        <label class="weather-slider-row"><span>Snow</span><input type="range" min="0" max="100" value="0" id="snowSlider" oninput="onWeatherSliderInput()"><strong id="snowSliderValue">0%</strong></label>
       </div>
       <div class="loop-track">
         <div class="loop-step" data-loop-step="sense">Sense</div>
@@ -379,91 +135,113 @@
         <div class="loop-step" data-loop-step="repeat">Repeat</div>
       </div>
       <div class="loop-reason" id="loopReason">Feedback loop idle.</div>
-      <div class="info-row">
-        <span class="info-label">Loop Cycle</span>
-        <span class="info-value" id="loopCycle">0</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Reroutes</span>
-        <span class="info-value" id="rerouteCount">0</span>
-      </div>
+      <div class="info-row"><span class="info-label">Loop Cycle</span><span class="info-value" id="loopCycle">0</span></div>
+      <div class="info-row"><span class="info-label">Reroutes</span><span class="info-value" id="rerouteCount">0</span></div>
     </div>
-    
+
+    <div class="info-section">
+      <div class="info-section-title">Demo Speed</div>
+      <div class="info-row"><span class="info-label">Current Speed</span><span class="info-value" id="speedMultiplierValue">1.0x</span></div>
+      <div class="speed-grid">
+        <button type="button" class="mini-button speed-button" id="speed1x" onclick="setDemoSpeed(1)">1x</button>
+        <button type="button" class="mini-button speed-button" id="speed2x" onclick="setDemoSpeed(2)">2x</button>
+        <button type="button" class="mini-button speed-button" id="speed3x" onclick="setDemoSpeed(3)">3x</button>
+      </div>
+      <div class="tool-hint">Use a higher demo speed to finish navigation and zone surveys faster.</div>
+    </div>
+
     <div class="progress-section" id="progressSection" style="display:none;">
       <div class="progress-label">Navigation Progress</div>
-      <div class="progress-bar">
-        <div class="progress-fill" id="progressFill" style="width: 0%">
-          <span id="progressPercent">0%</span>
-        </div>
-      </div>
-      <div class="progress-text">
-        <span>Distance: <strong id="distanceValue">0.00</strong> km</span>
-        <span id="timeElapsed">Time: 0s</span>
-      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width: 0%"><span id="progressPercent">0%</span></div></div>
+      <div class="progress-text"><span>Distance: <strong id="distanceValue">0.00</strong> km</span><span id="timeElapsed">Time: 0s</span></div>
     </div>
-    
+
     <div class="info-section">
-      <div class="info-section-title">🛸 Current Position</div>
-      <div class="info-row">
-        <span class="info-label">Latitude</span>
-        <span class="info-value" id="curLat">43.7315</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Longitude</span>
-        <span class="info-value" id="curLon">-79.7624</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Altitude</span>
-        <span class="info-value" id="curAlt">0.0m</span>
-      </div>
+      <div class="info-section-title">Current Position</div>
+      <div class="info-row"><span class="info-label">Latitude</span><span class="info-value" id="curLat">43.7315</span></div>
+      <div class="info-row"><span class="info-label">Longitude</span><span class="info-value" id="curLon">-79.7624</span></div>
+      <div class="info-row"><span class="info-label">Altitude</span><span class="info-value" id="curAlt">0.0m</span></div>
     </div>
-    
+
     <div class="info-section" id="targetSection" style="display:none;">
-      <div class="info-section-title">📍 Target Location</div>
-      <div class="info-row">
-        <span class="info-label">Latitude</span>
-        <span class="info-value" id="tarLat">-</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Longitude</span>
-        <span class="info-value" id="tarLon">-</span>
-      </div>
+      <div class="info-section-title">Target Location</div>
+      <div class="info-row"><span class="info-label">Latitude</span><span class="info-value" id="tarLat">-</span></div>
+      <div class="info-row"><span class="info-label">Longitude</span><span class="info-value" id="tarLon">-</span></div>
     </div>
-    
-    <div style="flex: 1;"></div>
-    
-    <div style="font-size: 11px; color: #999; text-align: center;">
-      💡 Click on map to set destination<br>
-      ✈ Drone updates every 1 second
+
+    <div class="info-section">
+      <div class="info-section-title">Dispatch Summary</div>
+      <div class="dispatch-summary">
+        <div class="dispatch-counts">
+          <div class="dispatch-pill"><strong id="dispatchGreenCount">0</strong><span>Green</span></div>
+          <div class="dispatch-pill"><strong id="dispatchBlueCount">0</strong><span>Blue</span></div>
+          <div class="dispatch-pill"><strong id="dispatchGarbageCount">0</strong><span>Garbage</span></div>
+        </div>
+        <div class="info-row"><span class="info-label">Total In Zone</span><span class="info-value" id="dispatchTotalCount">0</span></div>
+        <div class="info-row"><span class="info-label">Survey Progress</span><span class="info-value" id="dispatchSurveyProgress">0 / 0</span></div>
+        <div class="tool-hint" id="dispatchMessage">Select a zone to calculate the number of bins and the addresses for dispatch.</div>
+        <button type="button" class="mini-button" id="flyZoneButton" onclick="flyToSelectedZone()" disabled>Fly Drone To Zone</button>
+        <div class="address-list" id="dispatchAddressList"></div>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
   let map = L.map('map').setView([43.7315, -79.7624], 15);
-  
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
-    .addTo(map);
-  
-  let droneMarker = L.marker([43.7315, -79.7624], {
-    title: 'Drone'
-  }).addTo(map);
-  droneMarker.bindPopup('<b>🚁 Drone</b>');
-  
-  const targetIcon = L.divIcon({
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+  const droneIcon = L.divIcon({
     className: '',
-    html: '<div class="target-pin"></div>',
-    iconSize: [20, 20],
-    iconAnchor: [10, 20],
+    html: `
+      <div class="drone-marker" aria-label="Drone marker">
+        <svg viewBox="0 0 128 128" role="img" aria-hidden="true">
+          <ellipse cx="64" cy="58" rx="18" ry="13" fill="#111111"/>
+          <path d="M26 57l26-8h24l26 8-2 10-23 3-13 8H44l-13-8-23-3z" fill="#111111"/>
+          <rect x="56" y="74" width="16" height="10" rx="2" fill="#111111"/>
+          <rect x="48" y="84" width="32" height="6" rx="3" fill="#111111"/>
+          <path d="M45 83l-15 30" stroke="#111111" stroke-width="7" stroke-linecap="round"/>
+          <path d="M83 83l15 30" stroke="#111111" stroke-width="7" stroke-linecap="round"/>
+          <path d="M44 75l-17 12" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
+          <path d="M84 75l17 12" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
+          <rect x="52" y="90" width="24" height="18" rx="4" fill="#111111"/>
+          <circle cx="64" cy="99" r="8" fill="#ffffff"/>
+          <circle cx="64" cy="99" r="5" fill="#111111"/>
+          <circle cx="64" cy="99" r="2" fill="#ffffff"/>
+          <path d="M32 43h22" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
+          <path d="M74 43h22" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
+          <path d="M38 34l-10 8 10 3 18-2z" fill="#111111"/>
+          <path d="M90 34l10 8-10 3-18-2z" fill="#111111"/>
+          <path d="M46 43l-4-10" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
+          <path d="M82 43l4-10" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    `,
+    iconSize: [42, 42],
+    iconAnchor: [21, 21],
     popupAnchor: [0, -20]
   });
-
+  let droneMarker = L.marker([43.7315, -79.7624], { title: 'Drone', icon: droneIcon }).addTo(map);
+  const targetIcon = L.divIcon({ className: '', html: '<div class="target-pin"></div>', iconSize: [20, 20], iconAnchor: [10, 20], popupAnchor: [0, -20] });
   let targetMarker = null;
   let routeLine = null;
+  let zoneRectangle = null;
+  let pendingZoneCorner = null;
   let navigationStartTime = 0;
   let navigationStartDistance = 0;
   let lastFlightStatus = 'idle';
   let weatherPushTimer = null;
+  let speedMultiplier = 1;
+  let activeMapMode = null;
+  let selectedZone = null;
+  let binMarkers = new Map();
+  let suppressStatusPollingError = false;
+
+  const binStyles = {
+    green: { color: '#2a9d8f', accent: '#7fdad0', label: 'Green Bin' },
+    blue: { color: '#2d6cdf', accent: '#bcd4ff', label: 'Blue Bin' },
+    garbage: { color: '#656d76', accent: '#d7dce1', label: 'Black Bin' }
+  };
 
   function setMessage(message, isError = false) {
     const messageBox = document.getElementById('messageBox');
@@ -471,79 +249,280 @@
     messageBox.className = isError ? 'message-box error' : 'message-box';
   }
 
-  function updateTargetMarker(lat, lon) {
-    if (targetMarker) {
-      map.removeLayer(targetMarker);
+  function updateSpeedControls(multiplier) {
+    speedMultiplier = Number(multiplier) || 1;
+    document.getElementById('speedMultiplierValue').innerText = `${speedMultiplier.toFixed(1)}x`;
+    document.querySelectorAll('.speed-button').forEach(button => button.classList.remove('active'));
+    const activeButton = document.getElementById(`speed${Math.round(speedMultiplier)}x`);
+    if (activeButton) activeButton.classList.add('active');
+  }
+
+  async function setDemoSpeed(multiplier) {
+    try {
+      const data = await fetchJson('/speed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ multiplier })
+      });
+      updateSpeedControls(data.demo?.multiplier ?? multiplier);
+      setMessage(`Demo flight speed set to ${(data.demo?.multiplier ?? multiplier).toFixed(1)}x.`);
+    } catch (err) {
+      setMessage(err.message || 'Failed to update demo speed.', true);
     }
+  }
 
-    targetMarker = L.marker([lat, lon], {
-      icon: targetIcon,
-      title: 'Target'
-    }).addTo(map);
-    targetMarker.bindPopup('<b>ðŸ“ Target</b>');
-
+  function updateTargetMarker(lat, lon) {
+    if (targetMarker) map.removeLayer(targetMarker);
+    targetMarker = L.marker([lat, lon], { icon: targetIcon, title: 'Target' }).addTo(map);
     document.getElementById('tarLat').innerText = lat.toFixed(4);
     document.getElementById('tarLon').innerText = lon.toFixed(4);
     document.getElementById('targetSection').style.display = 'block';
   }
 
+  function getBinPopupContent(item) {
+    const overflowLabel = item.is_overflowing ? 'Turn Overflow Off' : 'Turn Overflow On';
+    const conditionText = item.condition || (item.is_overflowing ? 'Overflowing' : 'Standard');
+    const priorityText = item.priority || (item.is_overflowing ? 'High' : 'Normal');
+    return `
+      <div style="min-width:180px;">
+        <div style="font-weight:700;color:#1d3557;margin-bottom:4px;">${item.label || item.bin_type}</div>
+        <div style="font-size:12px;color:#5d6b86;margin-bottom:4px;">${item.address || 'Address pending'}</div>
+        <div style="font-size:12px;color:#5d6b86;margin-bottom:2px;">Condition: ${conditionText}</div>
+        <div style="font-size:12px;color:#5d6b86;margin-bottom:8px;">Priority: ${priorityText}</div>
+        <button type="button" onclick="toggleBinOverflow(${item.id}, ${item.is_overflowing ? 'false' : 'true'})" style="width:100%;padding:8px 10px;border:none;border-radius:8px;background:${item.is_overflowing ? 'linear-gradient(135deg, #6c757d 0%, #495057 100%)' : 'linear-gradient(135deg, #ef476f 0%, #ff7f51 100%)'};color:#fff;font-size:12px;font-weight:700;cursor:pointer;">${overflowLabel}</button>
+      </div>
+    `;
+  }
+
+  function createBinIcon(binItem) {
+    const style = binStyles[binItem.bin_type] || binStyles.garbage;
+    const overflowBadge = binItem.is_overflowing
+      ? `<div style="position:absolute;top:-4px;right:-5px;width:16px;height:16px;border-radius:50%;background:#ff7f51;border:2px solid #fff;color:#fff;font-size:11px;font-weight:700;line-height:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.25);">!</div><div style="position:absolute;bottom:-3px;left:50%;transform:translateX(-50%);padding:1px 5px;border-radius:999px;background:#ff7f51;color:#fff;font-size:8px;font-weight:700;letter-spacing:0.4px;box-shadow:0 2px 8px rgba(0,0,0,0.22);">OVR</div>`
+      : '';
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:34px;height:36px;display:flex;align-items:center;justify-content:center;position:relative;"><svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><path fill="#171717" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="${style.color}" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#171717"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#171717"/><circle cx="46" cy="47.5" r="2" fill="${style.accent}"/></svg>${overflowBadge}</div>`,
+      iconSize: [34, 36],
+      iconAnchor: [17, 18],
+      popupAnchor: [0, -12]
+    });
+  }
+
+  function renderBins(binItems) {
+    const seenIds = new Set();
+    (binItems || []).forEach(item => {
+      seenIds.add(item.id);
+      const popup = getBinPopupContent(item);
+      if (binMarkers.has(item.id)) {
+        const marker = binMarkers.get(item.id);
+        marker.setLatLng([item.lat, item.lon]);
+        marker.setIcon(createBinIcon(item));
+        marker.setPopupContent(popup);
+      } else {
+        const marker = L.marker([item.lat, item.lon], { icon: createBinIcon(item), title: item.label || item.bin_type }).addTo(map);
+        marker.bindPopup(popup);
+        binMarkers.set(item.id, marker);
+      }
+    });
+    Array.from(binMarkers.keys()).forEach(id => {
+      if (!seenIds.has(id)) {
+        map.removeLayer(binMarkers.get(id));
+        binMarkers.delete(id);
+      }
+    });
+  }
+
+  function updateDispatchSummary(summary, mission = null) {
+    const counts = summary?.counts || { green: 0, blue: 0, garbage: 0 };
+    document.getElementById('dispatchGreenCount').innerText = counts.green ?? 0;
+    document.getElementById('dispatchBlueCount').innerText = counts.blue ?? 0;
+    document.getElementById('dispatchGarbageCount').innerText = counts.garbage ?? 0;
+    document.getElementById('dispatchTotalCount').innerText = summary?.total_bins ?? 0;
+    document.getElementById('dispatchMessage').innerText = mission?.message || summary?.dispatch_message || 'Select a zone to calculate the number of bins and the addresses for dispatch.';
+    document.getElementById('flyZoneButton').disabled = !selectedZone;
+    document.getElementById('dispatchSurveyProgress').innerText = `${mission?.completed_waypoints ?? 0} / ${mission?.total_waypoints ?? 0}`;
+    const list = document.getElementById('dispatchAddressList');
+    list.innerHTML = '';
+    (summary?.addresses || []).forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'address-item';
+      card.innerHTML = `<div class="address-item-title">${item.label}</div><div class="address-item-copy">${item.address}</div><div class="address-item-copy">${item.lat.toFixed(5)}, ${item.lon.toFixed(5)}</div>`;
+      list.appendChild(card);
+    });
+  }
+
+  function setMapMode(mode) {
+    activeMapMode = mode;
+    pendingZoneCorner = null;
+    document.querySelectorAll('.mode-button').forEach(button => button.classList.remove('active'));
+    const buttonMap = { green: 'modeGreen', blue: 'modeBlue', garbage: 'modeGarbage', zone: 'modeZone' };
+    if (buttonMap[mode]) document.getElementById(buttonMap[mode]).classList.add('active');
+    const hints = {
+      green: 'Click the map to place a green waste bin and record its address.',
+      blue: 'Click the map to place a blue recycling bin and record its address.',
+      garbage: 'Click the map to place a garbage bin and record its address.',
+      zone: 'Click one corner, then click the opposite corner to define the drone dispatch zone.'
+    };
+    document.getElementById('toolHint').innerText = hints[mode] || 'Pick a tool, then click the GPS map to place bins or choose a two-corner dispatch zone.';
+  }
+
+  function clearMapMode() {
+    activeMapMode = null;
+    pendingZoneCorner = null;
+    document.querySelectorAll('.mode-button').forEach(button => button.classList.remove('active'));
+    document.getElementById('toolHint').innerText = 'Pick a tool, then click the GPS map to place bins or choose a two-corner dispatch zone.';
+  }
+
+  async function reverseGeocode(lat, lon) {
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { headers: { 'Accept': 'application/json' } });
+    if (!response.ok) throw new Error(`Reverse geocode failed with ${response.status}`);
+    const data = await response.json();
+    return data.display_name || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  }
+
+  async function placeWasteBin(binType, lat, lon) {
+    const style = binStyles[binType];
+    setMessage(`Resolving address for ${style.label.toLowerCase()}...`);
+    suppressStatusPollingError = true;
+    let address = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    try { address = await reverseGeocode(lat, lon); } catch (err) { console.error(err); }
+    try {
+      await fetchJson('/bins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bin_type: binType, lat, lon, address, label: style.label })
+      });
+      await refreshDispatchData();
+      setMessage(`${style.label} placed at ${address}`);
+    } finally {
+      suppressStatusPollingError = false;
+    }
+  }
+
+  async function toggleBinOverflow(binId, shouldOverflow) {
+    try {
+      const data = await fetchJson(`/bins/${binId}/overflow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_overflowing: shouldOverflow })
+      });
+      console.log('Overflow update response', data);
+      await refreshDispatchData();
+      if (binMarkers.has(binId)) {
+        binMarkers.get(binId).openPopup();
+      }
+      setMessage(data.message || 'Bin overflow state updated.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to update bin overflow state.', true);
+    }
+  }
+
+  function drawZoneRectangle(zone) {
+    if (!zone) return;
+    if (zoneRectangle) map.removeLayer(zoneRectangle);
+    zoneRectangle = L.rectangle([[zone.south, zone.west], [zone.north, zone.east]], { color: '#ef476f', weight: 2, fillOpacity: 0.08 }).addTo(map);
+  }
+
+  async function submitZone(zone) {
+    suppressStatusPollingError = true;
+    try {
+      const data = await fetchJson('/zone-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(zone)
+      });
+      if (data.summary) {
+        selectedZone = data.summary.zone || zone;
+        drawZoneRectangle(zone);
+        updateDispatchSummary(data.summary, { status: 'ready', message: 'Zone saved. Start the survey flight to collect dispatch details.', completed_waypoints: 0, total_waypoints: 0 });
+        setMessage('Zone saved. Use "Fly Drone To Zone" to survey the full area before dispatch details are generated.');
+      }
+    } finally {
+      suppressStatusPollingError = false;
+    }
+  }
+
+  function getZoneCenter(zone) {
+    if (!zone) return null;
+    return { lat: (zone.south + zone.north) / 2, lon: (zone.west + zone.east) / 2 };
+  }
+
+  async function flyToSelectedZone() {
+    if (!selectedZone) return setMessage('Define a zone before dispatching the drone.', true);
+    const center = getZoneCenter(selectedZone);
+    if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lon)) return setMessage('Selected zone does not have valid center coordinates.', true);
+    suppressStatusPollingError = true;
+    navigationStartTime = Date.now();
+    navigationStartDistance = 0;
+    updateTargetMarker(center.lat, center.lon);
+    updateStatus('surveying', 'Surveying Zone...');
+    setMessage('Dispatching drone to survey the selected zone...');
+    try {
+      const data = await fetchJson('/zone-fly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(selectedZone)
+      });
+      if (data.summary) {
+        selectedZone = data.summary.zone || selectedZone;
+        updateDispatchSummary(data.summary, { status: 'in_progress', message: data.summary.dispatch_message, completed_waypoints: 0, total_waypoints: 0 });
+      }
+      if (data.center) updateTargetMarker(Number(data.center.lat), Number(data.center.lon));
+      setMessage(data.message || 'Drone dispatched to survey the zone.');
+    } catch (err) {
+      updateStatus('error', 'Zone Dispatch Error');
+      setMessage(err.message || 'Failed to fly drone to selected zone.', true);
+    } finally {
+      suppressStatusPollingError = false;
+    }
+  }
+
+  async function refreshDispatchData() {
+    const data = await fetchJson('/bins');
+    renderBins(data.bins || []);
+    if (data.last_zone) { selectedZone = data.last_zone; drawZoneRectangle(data.last_zone); } else { selectedZone = null; }
+    updateDispatchSummary(data.last_summary || null, data.mission || null);
+  }
+
+  async function clearAllBins() {
+    await fetchJson('/bins', { method: 'DELETE' });
+    renderBins([]);
+    updateDispatchSummary(null, null);
+    if (zoneRectangle) { map.removeLayer(zoneRectangle); zoneRectangle = null; }
+    selectedZone = null;
+    pendingZoneCorner = null;
+    setMessage('All waste bins and dispatch selections were cleared.');
+  }
+
   function updateRouteLine(routePoints) {
-    if (routeLine) {
-      map.removeLayer(routeLine);
-      routeLine = null;
-    }
-
-    if (!Array.isArray(routePoints) || routePoints.length < 2) {
-      return;
-    }
-
-    const latLngs = routePoints
-      .filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lon))
-      .map(point => [point.lat, point.lon]);
-
-    if (latLngs.length < 2) {
-      return;
-    }
-
-    routeLine = L.polyline(latLngs, {
-      color: '#2a9d8f',
-      weight: 4,
-      opacity: 0.85,
-      dashArray: '8 10'
-    }).addTo(map);
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+    if (!Array.isArray(routePoints) || routePoints.length < 2) return;
+    const latLngs = routePoints.filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lon)).map(point => [point.lat, point.lon]);
+    if (latLngs.length < 2) return;
+    routeLine = L.polyline(latLngs, { color: '#2a9d8f', weight: 4, opacity: 0.85, dashArray: '8 10' }).addTo(map);
   }
 
   function updateFeedbackLoop(feedback, weather) {
-    const fallbackFeedback = feedback || {};
-    const fallbackWeather = weather || {};
-    const currentStage = fallbackFeedback.stage || 'repeat';
-
-    document.getElementById('rainValue').innerText = `${fallbackWeather.rain ?? 0}%`;
-    document.getElementById('windValue').innerText = `${fallbackWeather.wind ?? 0}%`;
-    document.getElementById('snowValue').innerText = `${fallbackWeather.snow ?? 0}%`;
-    document.getElementById('rainSlider').value = fallbackWeather.rain ?? 0;
-    document.getElementById('windSlider').value = fallbackWeather.wind ?? 0;
-    document.getElementById('snowSlider').value = fallbackWeather.snow ?? 0;
-    document.getElementById('rainSliderValue').innerText = `${fallbackWeather.rain ?? 0}%`;
-    document.getElementById('windSliderValue').innerText = `${fallbackWeather.wind ?? 0}%`;
-    document.getElementById('snowSliderValue').innerText = `${fallbackWeather.snow ?? 0}%`;
-    document.getElementById('loopCycle').innerText = fallbackFeedback.cycle ?? 0;
-    document.getElementById('rerouteCount').innerText = fallbackFeedback.reroute_count ?? 0;
-    document.getElementById('loopReason').innerText = fallbackFeedback.reason || 'Feedback loop idle.';
-
-    document.querySelectorAll('[data-loop-step]').forEach(step => {
-      step.classList.toggle('active', step.dataset.loopStep === currentStage);
-    });
-
-    updateRouteLine(fallbackFeedback.active_route);
+    const fb = feedback || {};
+    const w = weather || {};
+    document.getElementById('rainValue').innerText = `${w.rain ?? 0}%`;
+    document.getElementById('windValue').innerText = `${w.wind ?? 0}%`;
+    document.getElementById('snowValue').innerText = `${w.snow ?? 0}%`;
+    document.getElementById('rainSlider').value = w.rain ?? 0;
+    document.getElementById('windSlider').value = w.wind ?? 0;
+    document.getElementById('snowSlider').value = w.snow ?? 0;
+    document.getElementById('rainSliderValue').innerText = `${w.rain ?? 0}%`;
+    document.getElementById('windSliderValue').innerText = `${w.wind ?? 0}%`;
+    document.getElementById('snowSliderValue').innerText = `${w.snow ?? 0}%`;
+    document.getElementById('loopCycle').innerText = fb.cycle ?? 0;
+    document.getElementById('rerouteCount').innerText = fb.reroute_count ?? 0;
+    document.getElementById('loopReason').innerText = fb.reason || 'Feedback loop idle.';
+    document.querySelectorAll('[data-loop-step]').forEach(step => step.classList.toggle('active', step.dataset.loopStep === (fb.stage || 'repeat')));
+    updateRouteLine(fb.active_route);
   }
 
   function getWeatherPayload() {
-    return {
-      rain: Number(document.getElementById('rainSlider').value),
-      wind: Number(document.getElementById('windSlider').value),
-      snow: Number(document.getElementById('snowSlider').value)
-    };
+    return { rain: Number(document.getElementById('rainSlider').value), wind: Number(document.getElementById('windSlider').value), snow: Number(document.getElementById('snowSlider').value) };
   }
 
   async function pushWeatherToServer(showMessage = false) {
@@ -554,18 +533,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      if (data.weather) {
-        updateFeedbackLoop({ stage: 'sense' }, data.weather);
-      }
-
-      if (showMessage) {
-        setMessage(
-          `Weather synced to AirSim: rain ${payload.rain}%, wind ${payload.wind}%, snow ${payload.snow}%.`
-        );
-      }
+      if (data.weather) updateFeedbackLoop({ stage: 'sense' }, data.weather);
+      if (showMessage) setMessage(`Weather synced to AirSim: rain ${payload.rain}%, wind ${payload.wind}%, snow ${payload.snow}%.`);
     } catch (err) {
-      console.error('Weather sync error:', err);
       setMessage(err.message || 'Failed to sync weather to AirSim.', true);
     }
   }
@@ -578,295 +548,157 @@
     document.getElementById('rainValue').innerText = `${payload.rain}%`;
     document.getElementById('windValue').innerText = `${payload.wind}%`;
     document.getElementById('snowValue').innerText = `${payload.snow}%`;
-
-    if (weatherPushTimer) {
-      clearTimeout(weatherPushTimer);
-    }
-
-    weatherPushTimer = setTimeout(() => {
-      pushWeatherToServer(true);
-    }, 150);
+    if (weatherPushTimer) clearTimeout(weatherPushTimer);
+    weatherPushTimer = setTimeout(() => pushWeatherToServer(true), 150);
   }
 
   async function sendDroneToDestination(lat, lon, label) {
     navigationStartTime = Date.now();
     navigationStartDistance = 0;
-
     updateTargetMarker(lat, lon);
     updateStatus('flying', 'Navigating...');
     setMessage(`Sending ${label} ${lat.toFixed(5)}, ${lon.toFixed(5)}...`);
-
     try {
       const data = await fetchJson('/goto', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat: lat, lon: lon })
+        body: JSON.stringify({ lat, lon })
       });
-      console.log("Navigation started:", data);
       setMessage(data.message || 'Navigation started.');
     } catch (err) {
-      console.error('Navigation start error:', err);
       updateStatus('error', 'Navigation Error');
       setMessage(err.message, true);
     }
   }
 
-  async function promptForAddress() {
+  async function submitAddress() {
     const address = window.prompt('Enter the address to send the drone to:');
-    if (!address) {
-      return;
-    }
-
+    if (!address) return;
     updateStatus('flying', 'Searching...');
     setMessage(`Looking up "${address}"...`);
-
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(address)}`,
-        {
-          headers: {
-            'Accept': 'application/json'
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Address lookup failed with ${response.status}`);
-      }
-
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(address)}`, { headers: { 'Accept': 'application/json' } });
+      if (!response.ok) throw new Error(`Address lookup failed with ${response.status}`);
       const results = await response.json();
-      if (!Array.isArray(results) || results.length === 0) {
-        throw new Error('Address not found. Try a more specific address.');
-      }
-
+      if (!Array.isArray(results) || results.length === 0) throw new Error('Address not found. Try a more specific address.');
       const match = results[0];
       const lat = Number(match.lat);
       const lon = Number(match.lon);
-
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        throw new Error('Address lookup returned invalid coordinates.');
-      }
-
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('Address lookup returned invalid coordinates.');
       map.setView([lat, lon], 16);
       await sendDroneToDestination(lat, lon, 'address');
     } catch (err) {
-      console.error('Address lookup error:', err);
       updateStatus('error', 'Lookup Error');
       setMessage(err.message || 'Could not find that address.', true);
     }
   }
 
+  function promptForAddress() { submitAddress(); }
+
   async function fetchJson(url, options) {
     const response = await fetch(url, options);
     let data = {};
-
-    try {
-      data = await response.json();
-    } catch (err) {
-      data = { message: 'Server returned a non-JSON response.' };
-    }
-
-    if (!response.ok) {
-      throw new Error(data.message || `Request failed with ${response.status}`);
-    }
-
+    try { data = await response.json(); } catch (err) { data = { message: 'Server returned a non-JSON response.' }; }
+    if (!response.ok) throw new Error(data.message || `Request failed with ${response.status}`);
     return data;
   }
-  
-  // 🚁 Start drone
+
   async function startDrone() {
     updateStatus('taking_off', 'Taking Off...');
     setMessage('Sending takeoff command to AirSim...');
-
     try {
       const data = await fetchJson('/start');
-      console.log("Drone started:", data);
       updateStatus('idle', 'Ready to Fly');
       setMessage(data.message || 'Takeoff complete.');
     } catch (err) {
-      console.error('Takeoff error:', err);
       updateStatus('error', 'Takeoff Failed');
       setMessage(err.message, true);
     }
   }
-  
-  // 📍 Click to send destination
-  map.on('click', function(e) {
-    let lat = e.latlng.lat;
-    let lon = e.latlng.lng;
-    
-    console.log("Destination:", lat, lon);
-    sendDroneToDestination(lat, lon, 'destination');
-    return;
-    
-    // Update target marker
-    if (targetMarker) {
-      map.removeLayer(targetMarker);
-    }
-    targetMarker = L.marker([lat, lon], {
-      icon: targetIcon,
-      title: 'Target'
-    }).addTo(map);
-    targetMarker.bindPopup('<b>📍 Target</b>');
-    
-    // Start navigation
-    navigationStartTime = Date.now();
-    navigationStartDistance = 0;
-    
-    document.getElementById('tarLat').innerText = lat.toFixed(4);
-    document.getElementById('tarLon').innerText = lon.toFixed(4);
-    document.getElementById('targetSection').style.display = 'block';
-    
-    updateStatus('flying', 'Navigating...');
-    setMessage(`Sending destination ${lat.toFixed(5)}, ${lon.toFixed(5)}...`);
-    
-    fetchJson('/goto', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lat: lat, lon: lon })
-    }).then(data => {
-      console.log("Navigation started:", data);
-      setMessage(data.message || 'Navigation started.');
-    }).catch(err => {
-      console.error('Navigation start error:', err);
-      updateStatus('error', 'Navigation Error');
-      setMessage(err.message, true);
-    });
-  });
-  
-  function updateStatus(status, message) {
-    let statusCard = document.getElementById('statusCard');
-    statusCard.className = 'status-card status-' + status;
-    statusCard.innerHTML = `
-      <div class="status-label">Flight Status</div>
-      <div class="status-text">${message}</div>
-    `;
-  }
-  
-  // 🔄 Update drone position every 1 second
-  function launchConfetti() {
-    const layer = document.getElementById('confettiLayer');
-    const colors = ['#d62828', '#f77f00', '#fcbf49', '#2a9d8f', '#4d96ff', '#9b5de5'];
 
-    for (let i = 0; i < 120; i++) {
-      const piece = document.createElement('div');
-      piece.className = 'confetti-piece';
-      piece.style.left = `${Math.random() * 100}vw`;
-      piece.style.background = colors[i % colors.length];
-      piece.style.animationDuration = `${3 + Math.random() * 2.5}s`;
-      piece.style.animationDelay = `${Math.random() * 0.35}s`;
-      piece.style.setProperty('--drift', `${(Math.random() - 0.5) * 240}px`);
-      piece.style.setProperty('--spin', `${(Math.random() - 0.5) * 1080}deg`);
-      layer.appendChild(piece);
-      piece.addEventListener('animationend', () => piece.remove());
+  map.on('click', function(e) {
+    const lat = e.latlng.lat;
+    const lon = e.latlng.lng;
+    if (activeMapMode === 'green' || activeMapMode === 'blue' || activeMapMode === 'garbage') {
+      placeWasteBin(activeMapMode, lat, lon).catch(err => setMessage(err.message || 'Failed to place waste bin.', true));
+      return;
     }
+    if (activeMapMode === 'zone') {
+      if (!pendingZoneCorner) {
+        pendingZoneCorner = { lat, lon };
+        document.getElementById('toolHint').innerText = 'Zone start captured. Click the opposite corner to finish the dispatch area.';
+      } else {
+        const zone = { south: Math.min(pendingZoneCorner.lat, lat), north: Math.max(pendingZoneCorner.lat, lat), west: Math.min(pendingZoneCorner.lon, lon), east: Math.max(pendingZoneCorner.lon, lon) };
+        pendingZoneCorner = null;
+        submitZone(zone).catch(err => setMessage(err.message || 'Failed to summarize selected zone.', true));
+      }
+      return;
+    }
+    sendDroneToDestination(lat, lon, 'destination');
+  });
+
+  function updateStatus(status, message) {
+    const statusCard = document.getElementById('statusCard');
+    statusCard.className = 'status-card status-' + status;
+    statusCard.innerHTML = `<div class="status-label">Flight Status</div><div class="status-text">${message}</div>`;
+  }
+
+  function getStatusMessage(status) {
+    const messages = { idle: 'Ready to Fly', flying: 'Navigating...', surveying: 'Surveying Zone...', taking_off: 'Taking Off...', arrived: 'Arrived!', error: 'Navigation Error' };
+    return messages[status] || status;
   }
 
   setInterval(() => {
     fetch('/position')
       .then(async res => {
         let data = {};
-        try {
-          data = await res.json();
-        } catch (err) {
-          data = { message: 'Server returned a non-JSON response.' };
-        }
-
-        if (!res.ok) {
-          throw new Error(data.message || `Request failed with ${res.status}`);
-        }
-
+        try { data = await res.json(); } catch (err) { data = { message: 'Server returned a non-JSON response.' }; }
+        if (!res.ok) throw new Error(data.message || `Request failed with ${res.status}`);
         return data;
       })
       .then(data => {
-        if (typeof data.lat !== 'number' || typeof data.lon !== 'number') {
-          throw new Error('Position endpoint did not return valid coordinates.');
-        }
-
-        if (data.status === 'arrived' && lastFlightStatus !== 'arrived') {
-          launchConfetti();
-        }
+        if (typeof data.lat !== 'number' || typeof data.lon !== 'number') throw new Error('Position endpoint did not return valid coordinates.');
         lastFlightStatus = data.status;
-
         updateFeedbackLoop(data.feedback, data.weather);
-
-        // Update map marker
+        if (data.demo) updateSpeedControls(data.demo.speed_multiplier);
+        if (data.dispatch) {
+          if (data.dispatch.last_zone) { selectedZone = data.dispatch.last_zone; drawZoneRectangle(data.dispatch.last_zone); }
+          updateDispatchSummary(data.dispatch.last_summary || null, data.dispatch.mission || null);
+        }
         droneMarker.setLatLng([data.lat, data.lon]);
         map.setView([data.lat, data.lon], map.getZoom());
-        
-        // Update status
         updateStatus(data.status, getStatusMessage(data.status));
         setMessage(data.message || getStatusMessage(data.status), data.status === 'error');
-        
-        // Update position display
         document.getElementById('curLat').innerText = data.lat.toFixed(4);
         document.getElementById('curLon').innerText = data.lon.toFixed(4);
         document.getElementById('curAlt').innerText = Math.abs(data.z).toFixed(1) + 'm';
-        
-        // Update progress if flying
-        if (data.status === 'flying' && data.distance_to_goal !== undefined) {
+        if ((data.status === 'flying' || data.status === 'surveying') && data.distance_to_goal !== undefined) {
           document.getElementById('progressSection').style.display = 'block';
-          
-          // Calculate progress
-          let distance = data.distance_to_goal || 0;
-          let distanceKm = distance / 1000;
-          let progress = data.progress_percent || 0;
-          
-          // Store initial distance for future calculations
-          if (navigationStartDistance === 0 && distance > 0) {
-            navigationStartDistance = distance;
-          }
-          
-          // Update progress bar
+          const distance = data.distance_to_goal || 0;
+          const distanceKm = distance / 1000;
+          const progress = data.progress_percent || 0;
           document.getElementById('progressFill').style.width = progress + '%';
           document.getElementById('progressPercent').innerText = Math.round(progress) + '%';
           document.getElementById('distanceValue').innerText = distanceKm.toFixed(2);
-          
-          // Calculate time elapsed
-          let timeElapsed = Math.floor((Date.now() - navigationStartTime) / 1000);
-          document.getElementById('timeElapsed').innerText = 'Time: ' + timeElapsed + 's';
-          
+          document.getElementById('timeElapsed').innerText = 'Time: ' + Math.floor((Date.now() - navigationStartTime) / 1000) + 's';
         } else if (data.status === 'arrived') {
           document.getElementById('progressSection').style.display = 'block';
           document.getElementById('progressFill').style.width = '100%';
           document.getElementById('progressPercent').innerText = '100%';
           document.getElementById('distanceValue').innerText = '0.00';
-          updateStatus('arrived', '✅ Arrived!');
-          
-          // Show final time
-          let timeElapsed = Math.floor((Date.now() - navigationStartTime) / 1000);
-          let minutes = Math.floor(timeElapsed / 60);
-          let seconds = timeElapsed % 60;
-          document.getElementById('timeElapsed').innerText = `Time: ${minutes}m ${seconds}s`;
-          
-        } else if (data.status === 'idle') {
+        } else if (data.status === 'idle' || data.status === 'error') {
           document.getElementById('progressSection').style.display = 'none';
-          updateStatus('idle', '🛸 Ready to Fly');
-        } else if (data.status === 'error') {
-          document.getElementById('progressSection').style.display = 'none';
-          updateStatus('error', '❌ Navigation Error');
         }
-        
       })
       .catch(err => {
-        console.error('Position update error:', err);
+        if (suppressStatusPollingError) return;
         updateStatus('error', 'Status Error');
         setMessage(err.message || 'Could not reach Flask status endpoint.', true);
       });
   }, 1000);
-  
-  function getStatusMessage(status) {
-    const messages = {
-      'idle': '🛸 Ready to Fly',
-      'flying': '✈️ Navigating...',
-      'taking_off': '🚀 Taking Off...',
-      'arrived': '✅ Arrived!',
-      'error': '❌ Navigation Error'
-    };
-    return messages[status] || status;
-  }
-  
-</script>
 
+  refreshDispatchData().catch(err => console.error(err));
+  fetchJson('/speed').then(data => updateSpeedControls(data.speed_multiplier)).catch(() => {});
+</script>
 </body>
 </html>

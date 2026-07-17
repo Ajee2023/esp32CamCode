@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Waste Sorter Control</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Smart Waste Management</p>
+          <h1>Waste Sorter Control</h1>
+        </div>
+        <div class="system-status" id="systemStatus">Ready</div>
+      </section>
+
+      <section class="control-grid">
+        <div class="camera-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Camera Feed</h2>
+              <p id="cameraUrl">Loading camera config</p>
+            </div>
+            <button class="primary-action" id="runButton" type="button">
+              <span class="button-icon">●</span>
+              Capture + Classify
+            </button>
+          </div>
+          <div class="image-stage" id="imageStage">
+            <div class="placeholder">
+              <span class="placeholder-mark">♻</span>
+              <p>No capture yet</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-panel">
+          <div class="panel-header compact">
+            <div>
+              <h2>Classification</h2>
+              <p>Mirrors the LCD result</p>
+            </div>
+          </div>
+
+          <div class="result-display" id="resultDisplay">
+            <span class="result-label">Waiting</span>
+            <strong>Ready</strong>
+          </div>
+
+          <div class="lcd-preview">
+            <div class="lcd-row" id="lcdLine1">Ready</div>
+            <div class="lcd-row" id="lcdLine2">Waiting</div>
+          </div>
+
+          <div class="future-controls">
+            <button type="button" disabled>Rotate Motor</button>
+            <button type="button" id="lidButton">Open Lid</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="flow-panel">
+        <div class="panel-header compact">
+          <div>
+            <h2>Flow</h2>
+            <p>Capture, classify, update LCD</p>
+          </div>
+        </div>
+        <ol class="flow-list" id="flowList"></ol>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -35,6 +35,10 @@ flight_progress = {
     "target_lon": None,
 }
 
+speed_state = {
+    "multiplier": 1.0,
+}
+
 # ============ CONFIGURATION ============
 MAX_SPEED = 8.0
 ALTITUDE_TARGET = -10.0
@@ -51,6 +55,7 @@ MAX_DETOUR_DISTANCE = 18.0
 MAX_WAYPOINTS = 2
 MAX_DISTANCE_BACKTRACK_FACTOR = 1.35
 FEEDBACK_LOOP_INTERVAL_SECONDS = 3.0
+MAX_SPEED_MULTIPLIER = 3.0
 
 
 # ============ HELPER: GPS <-> SIMULATION ============
@@ -220,6 +225,17 @@ def clamp(value, min_value, max_value):
     return max(min_value, min(max_value, value))
 
 
+def set_speed_multiplier(multiplier):
+    """Scale demo flight speed for navigation and survey missions."""
+    value = clamp(float(multiplier), 1.0, MAX_SPEED_MULTIPLIER)
+    speed_state["multiplier"] = value
+    return {"multiplier": value}
+
+
+def get_speed_multiplier():
+    return speed_state["multiplier"]
+
+
 def angular_distance_deg(angle_a, angle_b):
     """Smallest absolute difference between two headings."""
     return abs((angle_a - angle_b + 180) % 360 - 180)
@@ -355,7 +371,7 @@ def rotate_to_heading(target_yaw, speed=25):
 
 def move_step(vx, vy, target_z, duration=0.25):
     """Move one incremental step in (vx, vy) while holding altitude."""
-    vx, vy = limit_velocity(vx, vy, MAX_SPEED)
+    vx, vy = limit_velocity(vx, vy, MAX_SPEED * get_speed_multiplier())
 
     pos = get_position()
     vz = clamp((target_z - pos["z"]) * 0.8, -2.0, 2.0)
@@ -593,14 +609,15 @@ def fly_to_intelligent(lat, lon, feedback_hook=None):
         speed_factor = min(1.0, distance_to_target / 20.0)
         speed_factor = max(0.35, speed_factor)
 
-        vx = dx_norm * MAX_SPEED * speed_factor
-        vy = dy_norm * MAX_SPEED * speed_factor
+        cruise_speed = MAX_SPEED * get_speed_multiplier()
+        vx = dx_norm * cruise_speed * speed_factor
+        vy = dy_norm * cruise_speed * speed_factor
 
         waypoint_str = f" | {len(waypoints)} waypoints" if waypoints else ""
         print(
             f"[{iteration}] MOVING | Dist: {distance_to_goal:.1f}m | "
             f"Altitude: {abs(cruise_altitude):.1f}m | "
-            f"Speed: {speed_factor * 100:.0f}% | "
+            f"Speed: {(speed_factor * get_speed_multiplier()) * 100:.0f}% | "
             f"Progress: {flight_progress['progress_percent']:.0f}%{waypoint_str}"
         )
         move_step(vx, vy, cruise_altitude, duration=0.2)
