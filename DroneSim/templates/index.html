@@ -7,9 +7,87 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <style>
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f0f0; }
-    #container { display: flex; height: 100vh; gap: 10px; padding: 10px; }
-    #map { flex: 1; height: 100%; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+    #appShell { display: flex; flex-direction: column; height: 100vh; }
+    .top-tabs {
+      display: flex;
+      gap: 10px;
+      padding: 10px 10px 0;
+      background: linear-gradient(180deg, #eef2fb 0%, #f7f9fe 100%);
+      border-bottom: 1px solid #dbe3f2;
+    }
+    .top-tab {
+      width: auto;
+      min-width: 220px;
+      padding: 12px 18px;
+      border-radius: 14px 14px 0 0;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+      background: linear-gradient(135deg, #cfd8ea 0%, #e3eaf6 100%);
+      color: #41516b;
+      box-shadow: none;
+      transform: none;
+    }
+    .top-tab:hover,
+    .top-tab:active { transform: none; }
+    .top-tab.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 10px 22px rgba(102, 126, 234, 0.2);
+    }
+    .top-tab-content {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .top-tab-badge {
+      min-width: 24px;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.22);
+      color: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+      opacity: 0;
+      transform: scale(0.85);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      pointer-events: none;
+    }
+    .top-tab-badge.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .tab-panel { display: none; flex: 1; min-height: 0; width: 100%; }
+    .tab-panel.active { display: flex; }
+    #container {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 10px;
+      padding: 10px;
+      height: 100%;
+      width: 100%;
+      min-height: 0;
+    }
+    .map-stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+      min-height: 320px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
     #panel { width: 380px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); display: flex; flex-direction: column; padding: 20px; gap: 15px; overflow-y: auto; }
     button { width: 100%; padding: 12px; font-size: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: transform 0.2s; }
     button:hover { transform: scale(1.02); }
@@ -38,12 +116,17 @@
     .mode-green { background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%); }
     .mode-blue { background: linear-gradient(135deg, #2d6cdf 0%, #4d96ff 100%); }
     .mode-garbage { background: linear-gradient(135deg, #6c757d 0%, #343a40 100%); }
-    .mode-zone { background: linear-gradient(135deg, #ef476f 0%, #ff7f51 100%); }
+    .mode-dispatch-zone { background: linear-gradient(135deg, #7a8f32 0%, #a4c24d 100%); box-shadow: 0 0 18px rgba(164, 194, 77, 0.28); }
+    .mode-no-fly { background: linear-gradient(135deg, #c73b57 0%, #ff6b6b 100%); box-shadow: 0 0 18px rgba(239, 71, 111, 0.32); }
     .mini-button { background: linear-gradient(135deg, #6d72c3 0%, #8352a5 100%); }
     .speed-button.active {
       background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%);
       color: #ffffff;
     }
+    .speed-slider-wrap { margin-top: 10px; }
+    .speed-slider-row { display: grid; grid-template-columns: 34px 1fr 48px; gap: 10px; align-items: center; font-size: 12px; color: #4f5d75; }
+    .speed-slider-row input[type="range"] { width: 100%; accent-color: #2a9d8f; }
+    .speed-slider-scale { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; color: #7a8699; }
     .button-content { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
     .button-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
     .button-icon svg { width: 22px; height: 22px; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28)); }
@@ -73,26 +156,348 @@
     .address-item { padding: 10px 12px; border-radius: 12px; background: white; border: 1px solid #e4e8f4; }
     .address-item-title { font-size: 12px; font-weight: 700; color: #1d3557; margin-bottom: 4px; text-transform: capitalize; }
     .address-item-copy { font-size: 12px; color: #5d6b86; line-height: 1.4; }
+    .address-item-topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .priority-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: white;
+    }
+    .priority-normal { background: linear-gradient(135deg, #667085 0%, #98a2b3 100%); }
+    .priority-medium { background: linear-gradient(135deg, #f4a261 0%, #f6bd60 100%); color: #3d2b00; }
+    .priority-high { background: linear-gradient(135deg, #ef476f 0%, #ff7f51 100%); }
+    .priority-critical { background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%); }
+    .address-item-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .meta-pill {
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      background: #eef3ff;
+      color: #4c5f7d;
+    }
+    .formula-box {
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 14px;
+      background: #f7f9ff;
+      border: 1px solid #dde5f5;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #607089;
+    }
+    .zone-tool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .zone-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; margin-top: 10px; }
+    .zone-item { border: 1px solid #e3e8f4; border-radius: 12px; background: white; padding: 10px 12px; }
+    .zone-item.inactive { opacity: 0.7; }
+    .zone-item-title { font-size: 12px; font-weight: 700; color: #1d3557; display: flex; justify-content: space-between; gap: 8px; }
+    .zone-item-copy { font-size: 11px; color: #61708a; line-height: 1.4; margin-top: 4px; }
+    .zone-item-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+    .zone-action-button { width: 100%; padding: 7px 8px; border: none; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; color: white; }
+    .zone-action-toggle { background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%); }
+    .zone-action-edit { background: linear-gradient(135deg, #2d6cdf 0%, #4d96ff 100%); }
+    .zone-action-delete { background: linear-gradient(135deg, #ef476f 0%, #ff7f51 100%); }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 20, 35, 0.42);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 12000;
+      padding: 20px;
+    }
+    .modal-backdrop.visible { display: flex; }
+    .modal-card {
+      width: min(420px, 100%);
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+      padding: 18px;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #1d3557;
+      margin-bottom: 6px;
+    }
+    .modal-copy {
+      font-size: 12px;
+      color: #607089;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    }
+    .modal-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .modal-field label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #40506b;
+    }
+    .modal-field input,
+    .modal-field textarea {
+      width: 100%;
+      border: 1px solid #d7dfeb;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #24364d;
+      font-family: inherit;
+      background: #fbfcff;
+    }
+    .modal-field textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .modal-secondary {
+      background: linear-gradient(135deg, #6c7a92 0%, #8997ae 100%);
+    }
+    .dispatch-placeholder {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .dispatch-placeholder-card {
+      width: min(760px, 100%);
+      background: white;
+      border-radius: 24px;
+      padding: 40px;
+      box-shadow: 0 20px 48px rgba(22, 34, 59, 0.12);
+      border: 1px solid #e4eaf6;
+    }
+    .dispatch-placeholder-title {
+      font-size: 28px;
+      font-weight: 800;
+      color: #1d3557;
+      margin-bottom: 10px;
+    }
+    .dispatch-placeholder-copy {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #607089;
+      max-width: 56ch;
+    }
+    .dispatch-tab-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      width: 100%;
+      padding: 18px;
+      overflow-y: auto;
+      background: linear-gradient(180deg, #f5f8ff 0%, #eef3fb 100%);
+    }
+    .dispatch-tab-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 20px;
+      padding: 24px 26px;
+      box-shadow: 0 18px 40px rgba(102, 126, 234, 0.2);
+    }
+    .dispatch-tab-eyebrow {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.9px;
+      text-transform: uppercase;
+      opacity: 0.82;
+      margin-bottom: 8px;
+    }
+    .dispatch-tab-title {
+      font-size: 30px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .dispatch-tab-copy {
+      max-width: 70ch;
+      font-size: 14px;
+      line-height: 1.6;
+      opacity: 0.92;
+    }
+    .dispatch-tab-grid {
+      display: grid;
+      grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+      gap: 18px;
+      min-height: 0;
+    }
+    .dispatch-summary-card,
+    .dispatch-address-panel {
+      background: white;
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 16px 36px rgba(22, 34, 59, 0.1);
+      border: 1px solid #e4eaf6;
+    }
+    .dispatch-summary-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .dispatch-address-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .dispatch-address-panel .address-list {
+      max-height: none;
+      min-height: 220px;
+      flex: 1;
+    }
+    .dispatch-empty-state {
+      border: 1px dashed #d2dceb;
+      border-radius: 16px;
+      background: #f8fbff;
+      padding: 22px 18px;
+      color: #607089;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .dispatch-empty-state strong {
+      display: block;
+      color: #1d3557;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .dispatch-pickup-note {
+      font-size: 12px;
+      color: #607089;
+      line-height: 1.5;
+      margin-top: 2px;
+    }
+    @media (max-width: 1180px) {
+      #container {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      #panel {
+        width: 100%;
+      }
+      .dispatch-tab-grid {
+        grid-template-columns: 1fr;
+      }
+    }
     .target-pin { width: 20px; height: 20px; background: #d62828; border: 2px solid #fff; border-radius: 50% 50% 50% 0; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28); transform: rotate(-45deg); }
+    .map-alert {
+      position: absolute;
+      left: 50%;
+      top: 20px;
+      transform: translateX(-50%);
+      z-index: 800;
+      min-width: 320px;
+      max-width: min(640px, calc(100% - 40px));
+      padding: 14px 18px;
+      border-radius: 14px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(8px);
+      color: #17324d;
+      font-size: 13px;
+      line-height: 1.45;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    .map-alert.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .map-alert.error {
+      background: rgba(255, 240, 240, 0.96);
+      border-color: rgba(239, 71, 111, 0.32);
+    }
+    .map-alert.warning {
+      background: rgba(255, 248, 229, 0.96);
+      border-color: rgba(255, 179, 71, 0.32);
+    }
+    .map-alert.success {
+      background: rgba(238, 250, 245, 0.96);
+      border-color: rgba(42, 157, 143, 0.32);
+    }
+    .map-alert-title {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      margin-bottom: 4px;
+    }
     .drone-marker {
-      width: 42px;
-      height: 42px;
+      width: 38px;
+      height: 38px;
       display: flex;
       align-items: center;
       justify-content: center;
       filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.28));
     }
     .drone-marker svg {
-      width: 42px;
-      height: 42px;
+      width: 38px;
+      height: 38px;
       display: block;
+    }
+    .celebration-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 9999;
+    }
+    .confetti-piece {
+      position: absolute;
+      top: -30px;
+      width: 10px;
+      height: 18px;
+      border-radius: 3px;
+      opacity: 0;
+      animation: confetti-drop 2.8s ease-in forwards;
+    }
+    @keyframes confetti-drop {
+      0% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 1; }
+      100% { transform: translate3d(var(--drift, 0px), 105vh, 0) rotate(720deg); opacity: 0; }
     }
   </style>
 </head>
 <body>
-<div id="container">
-  <div id="map"></div>
-  <div id="panel">
+<div id="appShell">
+  <div class="top-tabs">
+    <button type="button" class="top-tab active" id="tabFlightButton" onclick="showTopTab('flight')">
+      <span class="top-tab-content"><span>Drone - Flight Zone</span></span>
+    </button>
+    <button type="button" class="top-tab" id="tabDispatchButton" onclick="showTopTab('dispatch')">
+      <span class="top-tab-content"><span>Dispatch Details</span><span class="top-tab-badge" id="dispatchTabBadge">0</span></span>
+    </button>
+  </div>
+  <div class="tab-panel active" id="flightTabPanel">
+    <div id="container">
+      <div class="map-stage">
+        <div id="map"></div>
+        <div id="mapAlert" class="map-alert" aria-live="polite" aria-atomic="true"></div>
+      </div>
+      <div id="panel">
     <button onclick="promptForAddress()">GO TO ADDRESS</button>
     <button onclick="startDrone()">TAKEOFF</button>
     <div class="status-card" id="statusCard">
@@ -107,13 +512,31 @@
         <button type="button" class="mode-button mode-green" id="modeGreen" onclick="setMapMode('green')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#1f1f1f" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#2a9d8f" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#1f1f1f"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#1f1f1f"/><circle cx="46" cy="47.5" r="2" fill="#7fdad0"/></svg></span><span>Green Bin</span></span></button>
         <button type="button" class="mode-button mode-blue" id="modeBlue" onclick="setMapMode('blue')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#1f1f1f" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#2d6cdf" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#1f1f1f"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#1f1f1f"/><circle cx="46" cy="47.5" r="2" fill="#bcd4ff"/></svg></span><span>Blue Bin</span></span></button>
         <button type="button" class="mode-button mode-garbage" id="modeGarbage" onclick="setMapMode('garbage')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#111111" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#656d76" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#111111"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#111111"/><circle cx="46" cy="47.5" r="2" fill="#d7dce1"/></svg></span><span>Black Bin</span></span></button>
-        <button type="button" class="mode-button mode-zone" id="modeZone" onclick="setMapMode('zone')">Define Zone</button>
+        <button type="button" class="mode-button mode-dispatch-zone" id="modeZone" onclick="setMapMode('zone')">Define Zone</button>
       </div>
       <div class="mode-grid" style="margin-top: 8px;">
         <button type="button" class="mini-button" onclick="clearMapMode()">Exit Tool</button>
         <button type="button" class="mini-button" onclick="clearAllBins()">Clear All Bins</button>
       </div>
       <div class="tool-hint" id="toolHint">Pick a tool, then click the GPS map to place bins or choose a two-corner dispatch zone.</div>
+    </div>
+
+    <div class="info-section">
+      <div class="info-section-title">Define No-Fly Zone</div>
+      <div class="zone-tool-grid">
+        <button type="button" class="mode-button mode-no-fly" id="modeNoFlyPolygon" onclick="setNoFlyMode('polygon')">Polygon Zone</button>
+        <button type="button" class="mini-button" onclick="finishPolygonZone()">Finish Polygon</button>
+      </div>
+      <div class="mode-grid" style="margin-top: 8px;">
+        <button type="button" class="mini-button" onclick="clearNoFlyDrawing()">Clear Draft</button>
+        <div></div>
+      </div>
+      <div class="mode-grid" style="margin-top: 8px;">
+        <button type="button" class="mini-button" onclick="clearMapMode()">Exit Tool</button>
+        <div></div>
+      </div>
+      <div class="tool-hint" id="noFlyHint">Choose a no-fly-zone shape, click the map to draw it, then name and save it.</div>
+      <div class="zone-list" id="noFlyZoneList"></div>
     </div>
 
     <div class="info-section">
@@ -142,12 +565,19 @@
     <div class="info-section">
       <div class="info-section-title">Demo Speed</div>
       <div class="info-row"><span class="info-label">Current Speed</span><span class="info-value" id="speedMultiplierValue">1.0x</span></div>
-      <div class="speed-grid">
-        <button type="button" class="mini-button speed-button" id="speed1x" onclick="setDemoSpeed(1)">1x</button>
-        <button type="button" class="mini-button speed-button" id="speed2x" onclick="setDemoSpeed(2)">2x</button>
-        <button type="button" class="mini-button speed-button" id="speed3x" onclick="setDemoSpeed(3)">3x</button>
+      <div class="speed-slider-wrap">
+        <label class="speed-slider-row">
+          <span>1x</span>
+          <input type="range" min="1" max="10" step="1" value="1" id="speedSlider" oninput="onSpeedSliderInput()" onchange="commitSpeedSlider()">
+          <strong id="speedSliderValue">1x</strong>
+        </label>
+        <div class="speed-slider-scale">
+          <span>slow</span>
+          <span>demo boost</span>
+          <span>10x</span>
+        </div>
       </div>
-      <div class="tool-hint">Use a higher demo speed to finish navigation and zone surveys faster.</div>
+      <div class="tool-hint">Use the slider to boost the demo speed up to 10x for faster navigation and zone surveys.</div>
     </div>
 
     <div class="progress-section" id="progressSection" style="display:none;">
@@ -168,21 +598,70 @@
       <div class="info-row"><span class="info-label">Latitude</span><span class="info-value" id="tarLat">-</span></div>
       <div class="info-row"><span class="info-label">Longitude</span><span class="info-value" id="tarLon">-</span></div>
     </div>
-
-    <div class="info-section">
-      <div class="info-section-title">Dispatch Summary</div>
-      <div class="dispatch-summary">
-        <div class="dispatch-counts">
-          <div class="dispatch-pill"><strong id="dispatchGreenCount">0</strong><span>Green</span></div>
-          <div class="dispatch-pill"><strong id="dispatchBlueCount">0</strong><span>Blue</span></div>
-          <div class="dispatch-pill"><strong id="dispatchGarbageCount">0</strong><span>Garbage</span></div>
-        </div>
-        <div class="info-row"><span class="info-label">Total In Zone</span><span class="info-value" id="dispatchTotalCount">0</span></div>
-        <div class="info-row"><span class="info-label">Survey Progress</span><span class="info-value" id="dispatchSurveyProgress">0 / 0</span></div>
-        <div class="tool-hint" id="dispatchMessage">Select a zone to calculate the number of bins and the addresses for dispatch.</div>
-        <button type="button" class="mini-button" id="flyZoneButton" onclick="flyToSelectedZone()" disabled>Fly Drone To Zone</button>
-        <div class="address-list" id="dispatchAddressList"></div>
       </div>
+    </div>
+  </div>
+  <div class="tab-panel" id="dispatchTabPanel">
+    <div class="dispatch-tab-layout">
+      <div class="dispatch-tab-header">
+        <div class="dispatch-tab-eyebrow">Dispatch Workflow</div>
+        <div class="dispatch-tab-title">Dispatch Details</div>
+        <div class="dispatch-tab-copy">
+          Once the drone completes the zone survey, this tab becomes the handoff view for dispatch. It shows the total bins still waiting for pickup, the survey completion state, and the exact addresses collected from the flight.
+        </div>
+      </div>
+      <div class="dispatch-tab-grid">
+        <div class="dispatch-summary-card">
+          <div class="info-section-title">Dispatch Summary</div>
+          <div class="dispatch-summary">
+            <div class="dispatch-counts">
+              <div class="dispatch-pill"><strong id="dispatchGreenCount">0</strong><span>Green</span></div>
+              <div class="dispatch-pill"><strong id="dispatchBlueCount">0</strong><span>Blue</span></div>
+              <div class="dispatch-pill"><strong id="dispatchGarbageCount">0</strong><span>Garbage</span></div>
+            </div>
+            <div class="info-row"><span class="info-label">Total In Zone</span><span class="info-value" id="dispatchTotalCount">0</span></div>
+            <div class="info-row"><span class="info-label">Survey Progress</span><span class="info-value" id="dispatchSurveyProgress">0 / 0</span></div>
+            <div class="info-row"><span class="info-label">Sort Order</span><span class="info-value">Score desc, time asc</span></div>
+            <div class="tool-hint" id="dispatchMessage">Select a zone to calculate the number of bins and the addresses for dispatch.</div>
+            <button type="button" class="mini-button" id="flyZoneButton" onclick="flyToSelectedZone()" disabled>Fly Drone To Zone</button>
+            <div class="dispatch-pickup-note" id="dispatchPickupNote">The pickup total appears on the Dispatch Details tab after the survey is fully complete.</div>
+            <div class="formula-box" id="dispatchPriorityFormula">
+              Priority formula will appear after the survey results are available.
+            </div>
+          </div>
+        </div>
+        <div class="dispatch-address-panel">
+          <div class="info-section-title">Pickup Addresses</div>
+          <div class="dispatch-empty-state" id="dispatchEmptyState">
+            <strong>Survey pending</strong>
+            Fly the selected zone to collect the verified list of bin locations and addresses for dispatch.
+          </div>
+          <div class="address-list" id="dispatchAddressList" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="celebrationLayer" class="celebration-layer" aria-hidden="true"></div>
+<div id="noFlyZoneModal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="noFlyZoneModalTitle">
+    <div class="modal-title" id="noFlyZoneModalTitle">Save No-Fly Zone</div>
+    <div class="modal-copy">Name the restricted area and set an optional note and caution buffer before saving it to the map.</div>
+    <div class="modal-field">
+      <label for="noFlyZoneName">Zone Name</label>
+      <input id="noFlyZoneName" type="text" value="Restricted Airspace">
+    </div>
+    <div class="modal-field">
+      <label for="noFlyZoneDescription">Description</label>
+      <textarea id="noFlyZoneDescription">Restricted airspace</textarea>
+    </div>
+    <div class="modal-field">
+      <label for="noFlyZoneBuffer">Buffer In Meters</label>
+      <input id="noFlyZoneBuffer" type="number" min="0" step="1" value="20">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="mini-button modal-secondary" onclick="cancelNoFlyZoneModal()">Cancel</button>
+      <button type="button" class="mini-button" onclick="confirmNoFlyZoneModal()">Save Zone</button>
     </div>
   </div>
 </div>
@@ -196,46 +675,50 @@
     html: `
       <div class="drone-marker" aria-label="Drone marker">
         <svg viewBox="0 0 128 128" role="img" aria-hidden="true">
-          <ellipse cx="64" cy="58" rx="18" ry="13" fill="#111111"/>
-          <path d="M26 57l26-8h24l26 8-2 10-23 3-13 8H44l-13-8-23-3z" fill="#111111"/>
-          <rect x="56" y="74" width="16" height="10" rx="2" fill="#111111"/>
-          <rect x="48" y="84" width="32" height="6" rx="3" fill="#111111"/>
-          <path d="M45 83l-15 30" stroke="#111111" stroke-width="7" stroke-linecap="round"/>
-          <path d="M83 83l15 30" stroke="#111111" stroke-width="7" stroke-linecap="round"/>
-          <path d="M44 75l-17 12" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
-          <path d="M84 75l17 12" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
-          <rect x="52" y="90" width="24" height="18" rx="4" fill="#111111"/>
-          <circle cx="64" cy="99" r="8" fill="#ffffff"/>
-          <circle cx="64" cy="99" r="5" fill="#111111"/>
-          <circle cx="64" cy="99" r="2" fill="#ffffff"/>
-          <path d="M32 43h22" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
-          <path d="M74 43h22" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
-          <path d="M38 34l-10 8 10 3 18-2z" fill="#111111"/>
-          <path d="M90 34l10 8-10 3-18-2z" fill="#111111"/>
-          <path d="M46 43l-4-10" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
-          <path d="M82 43l4-10" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="32" cy="32" r="20" fill="#2d7dd2"/>
+          <circle cx="96" cy="32" r="20" fill="#2d7dd2"/>
+          <circle cx="32" cy="96" r="20" fill="#2d7dd2"/>
+          <circle cx="96" cy="96" r="20" fill="#2d7dd2"/>
+          <circle cx="32" cy="32" r="12" fill="#3b4658"/>
+          <circle cx="96" cy="32" r="12" fill="#3b4658"/>
+          <circle cx="32" cy="96" r="12" fill="#3b4658"/>
+          <circle cx="96" cy="96" r="12" fill="#3b4658"/>
+          <path d="M42 36c8 10 18 14 22 14s14-4 22-14c6 7 7 17 2 27-5 10-13 17-24 19v10h-8V82c-11-2-19-9-24-19-5-10-4-20 2-27z" fill="#3b4658"/>
+          <circle cx="64" cy="64" r="10" fill="#ffffff"/>
         </svg>
       </div>
     `,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
+    iconSize: [38, 38],
+    iconAnchor: [19, 19],
     popupAnchor: [0, -20]
   });
   let droneMarker = L.marker([43.7315, -79.7624], { title: 'Drone', icon: droneIcon }).addTo(map);
+  droneMarker.bindTooltip('DRONE-001', { direction: 'top', offset: [0, -18] });
+  droneMarker.bindPopup('Loading drone details...');
   const targetIcon = L.divIcon({ className: '', html: '<div class="target-pin"></div>', iconSize: [20, 20], iconAnchor: [10, 20], popupAnchor: [0, -20] });
   let targetMarker = null;
   let routeLine = null;
   let zoneRectangle = null;
+  let noFlyZoneLayers = new Map();
   let pendingZoneCorner = null;
+  let pendingNoFlyPoints = [];
+  let pendingNoFlyPreview = null;
   let navigationStartTime = 0;
   let navigationStartDistance = 0;
   let lastFlightStatus = 'idle';
   let weatherPushTimer = null;
   let speedMultiplier = 1;
   let activeMapMode = null;
+  let activeNoFlyMode = null;
   let selectedZone = null;
+  let noFlyZones = [];
   let binMarkers = new Map();
   let suppressStatusPollingError = false;
+  let celebrationTimer = null;
+  let celebrationAudioContext = null;
+  let celebrationSoundTimer = null;
+  let mapAlertTimer = null;
+  let pendingNoFlySaveRequest = null;
 
   const binStyles = {
     green: { color: '#2a9d8f', accent: '#7fdad0', label: 'Green Bin' },
@@ -243,18 +726,372 @@
     garbage: { color: '#656d76', accent: '#d7dce1', label: 'Black Bin' }
   };
 
+  function showTopTab(tabName) {
+    const isFlight = tabName === 'flight';
+    document.getElementById('tabFlightButton').classList.toggle('active', isFlight);
+    document.getElementById('tabDispatchButton').classList.toggle('active', !isFlight);
+    document.getElementById('flightTabPanel').classList.toggle('active', isFlight);
+    document.getElementById('dispatchTabPanel').classList.toggle('active', !isFlight);
+    if (isFlight) {
+      setTimeout(() => map.invalidateSize(), 60);
+      setTimeout(() => map.invalidateSize(), 180);
+    }
+  }
+
+  window.addEventListener('load', () => {
+    setTimeout(() => map.invalidateSize(), 80);
+    setTimeout(() => map.invalidateSize(), 220);
+  });
+
   function setMessage(message, isError = false) {
     const messageBox = document.getElementById('messageBox');
     messageBox.innerText = message || 'No message';
     messageBox.className = isError ? 'message-box error' : 'message-box';
   }
 
+  function showMapAlert(message, type = 'error', title = '') {
+    const mapAlert = document.getElementById('mapAlert');
+    if (!mapAlert || !message) return;
+    const normalizedType = ['error', 'warning', 'success'].includes(type) ? type : 'error';
+    const defaultTitle = normalizedType === 'error'
+      ? 'Flight Alert'
+      : normalizedType === 'warning'
+        ? 'Route Caution'
+        : 'Mission Update';
+    mapAlert.className = `map-alert ${normalizedType} visible`;
+    mapAlert.innerHTML = `<div class="map-alert-title">${title || defaultTitle}</div><div>${message}</div>`;
+    if (mapAlertTimer) clearTimeout(mapAlertTimer);
+    mapAlertTimer = setTimeout(() => {
+      mapAlert.className = `map-alert ${normalizedType}`;
+    }, normalizedType === 'error' ? 5200 : 3600);
+  }
+
+  function updateDroneMarkerDetails(positionData) {
+    const drone = positionData?.drone || {};
+    const statusLabel = drone.status_label || 'IDLE';
+    const assignmentId = drone.assignment_id || 'None';
+    const batteryText = Number.isFinite(drone.battery_level) ? `${drone.battery_level.toFixed(1)}%` : 'Not available';
+    const latText = Number(positionData?.lat ?? 0).toFixed(5);
+    const lonText = Number(positionData?.lon ?? 0).toFixed(5);
+    const droneId = drone.id || 'DRONE-001';
+    const tooltipText = `${droneId} • ${statusLabel}`;
+    const popupContent = `
+      <div style="min-width:220px;">
+        <div style="font-weight:700;color:#1d3557;margin-bottom:6px;">${droneId}</div>
+        <div style="font-size:12px;color:#5d6b86;margin-bottom:3px;">Status: ${statusLabel}</div>
+        <div style="font-size:12px;color:#5d6b86;margin-bottom:3px;">Latitude: ${latText}</div>
+        <div style="font-size:12px;color:#5d6b86;margin-bottom:3px;">Longitude: ${lonText}</div>
+        <div style="font-size:12px;color:#5d6b86;margin-bottom:3px;">Battery: ${batteryText}</div>
+        <div style="font-size:12px;color:#5d6b86;margin-bottom:0;">Assignment: ${assignmentId}</div>
+      </div>
+    `;
+    droneMarker.setTooltipContent(tooltipText);
+    droneMarker.setPopupContent(popupContent);
+    droneMarker.options.title = tooltipText;
+    if (droneMarker._icon) {
+      droneMarker._icon.setAttribute('role', 'img');
+      droneMarker._icon.setAttribute('aria-label', tooltipText);
+      droneMarker._icon.setAttribute('title', tooltipText);
+    }
+  }
+
+  function getNoFlyModeButtonMap() {
+    return {
+      polygon: 'modeNoFlyPolygon'
+    };
+  }
+
+  function resetNoFlyModeButtons() {
+    Object.values(getNoFlyModeButtonMap()).forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.classList.remove('active');
+    });
+  }
+
+  function clearNoFlyDrawing() {
+    pendingNoFlyPoints = [];
+    if (pendingNoFlyPreview) {
+      map.removeLayer(pendingNoFlyPreview);
+      pendingNoFlyPreview = null;
+    }
+    document.getElementById('noFlyHint').innerText = 'Draft cleared. Saved no-fly zones remain active until you disable or delete them.';
+  }
+
+  function setNoFlyMode(mode) {
+    activeMapMode = null;
+    activeNoFlyMode = mode;
+    pendingZoneCorner = null;
+    clearNoFlyDrawing();
+    document.querySelectorAll('.mode-button').forEach(button => button.classList.remove('active'));
+    resetNoFlyModeButtons();
+    const buttonId = getNoFlyModeButtonMap()[mode];
+    if (buttonId) document.getElementById(buttonId).classList.add('active');
+    const hints = {
+      polygon: 'Click multiple points around the restricted area, then use Finish Polygon.'
+    };
+    document.getElementById('noFlyHint').innerText = hints[mode] || 'Draw a no-fly zone on the map.';
+    document.getElementById('toolHint').innerText = 'No-fly-zone drawing is active.';
+  }
+
+  function createNoFlyLayer(zone) {
+    const active = zone.is_active;
+    const style = {
+      color: active ? '#ef476f' : '#9aa7bd',
+      weight: 2,
+      fillColor: active ? '#ef476f' : '#c7d0df',
+      fillOpacity: active ? 0.14 : 0.06,
+      dashArray: active ? null : '6 6'
+    };
+    if (zone.shape_type === 'rectangle') {
+      const geometry = zone.geometry;
+      return L.rectangle([[geometry.south, geometry.west], [geometry.north, geometry.east]], style);
+    }
+    if (zone.shape_type === 'circle') {
+      return L.circle([zone.geometry.center.lat, zone.geometry.center.lon], { ...style, radius: zone.geometry.radius_meters });
+    }
+    return L.polygon((zone.geometry.points || []).map(point => [point.lat, point.lon]), style);
+  }
+
+  function renderNoFlyZones(zones) {
+    noFlyZones = Array.isArray(zones) ? zones : [];
+    const seenIds = new Set();
+    noFlyZones.forEach(zone => {
+      seenIds.add(zone.id);
+      const popup = `<div style="min-width:180px;"><div style="font-weight:700;color:#1d3557;margin-bottom:4px;">${zone.name}</div><div style="font-size:12px;color:#5d6b86;">${zone.description || 'Restricted airspace'}</div><div style="font-size:12px;color:#5d6b86;margin-top:4px;">${zone.shape_type} • buffer ${Math.round(zone.buffer_distance_meters || 0)}m • ${zone.is_active ? 'Active' : 'Inactive'}</div></div>`;
+      if (noFlyZoneLayers.has(zone.id)) {
+        const layer = noFlyZoneLayers.get(zone.id);
+        map.removeLayer(layer);
+      }
+      const layer = createNoFlyLayer(zone).addTo(map);
+      layer.bindPopup(popup);
+      noFlyZoneLayers.set(zone.id, layer);
+    });
+    Array.from(noFlyZoneLayers.keys()).forEach(id => {
+      if (!seenIds.has(id)) {
+        map.removeLayer(noFlyZoneLayers.get(id));
+        noFlyZoneLayers.delete(id);
+      }
+    });
+
+    const list = document.getElementById('noFlyZoneList');
+    list.innerHTML = '';
+    if (!noFlyZones.length) {
+      list.innerHTML = '<div class="zone-item"><div class="zone-item-copy">No saved no-fly zones are active or stored.</div></div>';
+      return;
+    }
+    noFlyZones.forEach(zone => {
+      const item = document.createElement('div');
+      item.className = `zone-item ${zone.is_active ? '' : 'inactive'}`.trim();
+      item.innerHTML = `
+        <div class="zone-item-title">
+          <span>${zone.name}</span>
+          <span>${zone.is_active ? 'Active' : 'Inactive'}</span>
+        </div>
+        <div class="zone-item-copy">${zone.shape_type} zone • buffer ${Math.round(zone.buffer_distance_meters || 0)}m</div>
+        <div class="zone-item-copy">${zone.description || 'Restricted airspace'}</div>
+        <div class="zone-item-actions">
+          <button type="button" class="zone-action-button zone-action-toggle" onclick="toggleNoFlyZoneActive(${zone.id}, ${zone.is_active ? 'false' : 'true'})">${zone.is_active ? 'Disable' : 'Enable'}</button>
+          <button type="button" class="zone-action-button zone-action-edit" onclick="editNoFlyZone(${zone.id})">Edit</button>
+          <button type="button" class="zone-action-button zone-action-delete" onclick="deleteNoFlyZone(${zone.id})">Delete</button>
+        </div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  function openNoFlyZoneModal(shapeType, geometry, defaults = {}) {
+    pendingNoFlySaveRequest = { shapeType, geometry };
+    document.getElementById('noFlyZoneName').value = defaults.name || 'Restricted Airspace';
+    document.getElementById('noFlyZoneDescription').value = defaults.description || 'Restricted airspace';
+    document.getElementById('noFlyZoneBuffer').value = String(Math.round(defaults.buffer_distance_meters ?? 20));
+    const modal = document.getElementById('noFlyZoneModal');
+    modal.classList.add('visible');
+    modal.setAttribute('aria-hidden', 'false');
+    setTimeout(() => document.getElementById('noFlyZoneName').focus(), 0);
+  }
+
+  function promptNoFlyZoneDetails(defaults = {}) {
+    const name = window.prompt('No-fly-zone name:', defaults.name || 'Restricted Airspace');
+    if (!name) return null;
+    const description = window.prompt('No-fly-zone description:', defaults.description || 'Restricted airspace');
+    if (description === null) return null;
+    const buffer = window.prompt('Caution buffer in meters:', String(Math.round(defaults.buffer_distance_meters ?? 20)));
+    if (buffer === null) return null;
+    const parsedBuffer = Number(buffer);
+    if (!Number.isFinite(parsedBuffer) || parsedBuffer < 0) {
+      setMessage('Buffer distance must be zero or a positive number.', true);
+      showMapAlert('Buffer distance must be zero or a positive number.', 'warning', 'Invalid Buffer');
+      return null;
+    }
+    return {
+      name: name.trim() || 'Restricted Airspace',
+      description: description.trim(),
+      buffer_distance_meters: parsedBuffer
+    };
+  }
+
+  function cancelNoFlyZoneModal() {
+    pendingNoFlySaveRequest = null;
+    const modal = document.getElementById('noFlyZoneModal');
+    modal.classList.remove('visible');
+    modal.setAttribute('aria-hidden', 'true');
+    document.getElementById('noFlyHint').innerText = 'Save cancelled. Your draft remains on the map so you can finish or adjust it.';
+  }
+
+  async function confirmNoFlyZoneModal() {
+    if (!pendingNoFlySaveRequest) return;
+    const name = document.getElementById('noFlyZoneName').value.trim() || 'Restricted Airspace';
+    const description = document.getElementById('noFlyZoneDescription').value.trim();
+    const parsedBuffer = Number(document.getElementById('noFlyZoneBuffer').value);
+    if (!Number.isFinite(parsedBuffer) || parsedBuffer < 0) {
+      setMessage('Buffer distance must be zero or a positive number.', true);
+      showMapAlert('Buffer distance must be zero or a positive number.', 'warning', 'Invalid Buffer');
+      return;
+    }
+
+    const payload = {
+      name,
+      description,
+      buffer_distance_meters: parsedBuffer,
+      shape_type: pendingNoFlySaveRequest.shapeType,
+      geometry: pendingNoFlySaveRequest.geometry,
+      is_active: true
+    };
+    try {
+      const data = await fetchJson('/no-fly-zones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      await refreshNoFlyZones();
+      clearNoFlyDrawing();
+      activeNoFlyMode = null;
+      resetNoFlyModeButtons();
+      pendingNoFlySaveRequest = null;
+      const modal = document.getElementById('noFlyZoneModal');
+      modal.classList.remove('visible');
+      modal.setAttribute('aria-hidden', 'true');
+      setMessage(`No-fly zone "${data.zone?.name || name}" saved.`);
+      showMapAlert(`No-fly zone "${data.zone?.name || name}" saved.`, 'success', 'Zone Saved');
+    } catch (err) {
+      setMessage(err.message || 'Failed to save no-fly zone.', true);
+      showMapAlert(err.message || 'Failed to save no-fly zone.', 'error');
+    }
+  }
+
+  async function refreshNoFlyZones() {
+    const data = await fetchJson('/no-fly-zones');
+    renderNoFlyZones(data.zones || []);
+  }
+
+  async function toggleNoFlyZoneActive(zoneId, isActive) {
+    try {
+      await fetchJson(`/no-fly-zones/${zoneId}/active`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: isActive })
+      });
+      await refreshNoFlyZones();
+      setMessage(`No-fly zone ${isActive ? 'enabled' : 'disabled'}.`);
+      showMapAlert(`No-fly zone ${isActive ? 'enabled' : 'disabled'}.`, 'success', 'Zone Updated');
+    } catch (err) {
+      setMessage(err.message || 'Failed to update no-fly zone state.', true);
+      showMapAlert(err.message || 'Failed to update no-fly zone state.', 'error');
+    }
+  }
+
+  async function editNoFlyZone(zoneId) {
+    const zone = noFlyZones.find(item => item.id === zoneId);
+    if (!zone) return;
+    const details = promptNoFlyZoneDetails(zone);
+    if (!details) return;
+    try {
+      await fetchJson(`/no-fly-zones/${zoneId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: details.name,
+          description: details.description,
+          buffer_distance_meters: details.buffer_distance_meters,
+          is_active: zone.is_active,
+          shape_type: zone.shape_type,
+          geometry: zone.geometry
+        })
+      });
+      await refreshNoFlyZones();
+      setMessage(`No-fly zone "${details.name}" updated.`);
+      showMapAlert(`No-fly zone "${details.name}" updated.`, 'success', 'Zone Updated');
+    } catch (err) {
+      setMessage(err.message || 'Failed to update no-fly zone.', true);
+      showMapAlert(err.message || 'Failed to update no-fly zone.', 'error');
+    }
+  }
+
+  async function deleteNoFlyZone(zoneId) {
+    if (!window.confirm('Delete this no-fly zone?')) return;
+    try {
+      await fetchJson(`/no-fly-zones/${zoneId}`, { method: 'DELETE' });
+      await refreshNoFlyZones();
+      setMessage('No-fly zone deleted.');
+      showMapAlert('No-fly zone deleted.', 'success', 'Zone Updated');
+    } catch (err) {
+      setMessage(err.message || 'Failed to delete no-fly zone.', true);
+      showMapAlert(err.message || 'Failed to delete no-fly zone.', 'error');
+    }
+  }
+
+  async function clearAllNoFlyZones() {
+    if (!window.confirm('Delete all saved no-fly zones?')) return;
+    try {
+      const data = await fetchJson('/no-fly-zones', { method: 'DELETE' });
+      await refreshNoFlyZones();
+      clearNoFlyDrawing();
+      setMessage(`Cleared ${data.deleted ?? 0} saved no-fly zone(s).`);
+      showMapAlert(`Cleared ${data.deleted ?? 0} saved no-fly zone(s).`, 'success', 'Zones Cleared');
+    } catch (err) {
+      setMessage(err.message || 'Failed to clear saved no-fly zones.', true);
+      showMapAlert(err.message || 'Failed to clear saved no-fly zones.', 'error');
+    }
+  }
+
+  function finishPolygonZone() {
+    if (pendingNoFlyPreview) {
+      map.removeLayer(pendingNoFlyPreview);
+      pendingNoFlyPreview = null;
+    }
+    if (activeNoFlyMode !== 'polygon' && pendingNoFlyPoints.length === 0) {
+      setMessage('Choose Polygon Zone and click at least three map points first.', true);
+      showMapAlert('Choose Polygon Zone and click at least three map points first.', 'warning', 'Polygon Draft Needed');
+      return;
+    }
+    if (pendingNoFlyPoints.length < 3) {
+      setMessage('Polygon no-fly zones require at least three points.', true);
+      showMapAlert('Polygon no-fly zones require at least three points.', 'warning', 'Polygon Draft Needed');
+      if (pendingNoFlyPoints.length >= 2) {
+        pendingNoFlyPreview = L.polyline(pendingNoFlyPoints.map(point => [point.lat, point.lon]), { color: '#ef476f', weight: 2, dashArray: '5 6' }).addTo(map);
+      }
+      return;
+    }
+    if (pendingNoFlyPreview) {
+      map.removeLayer(pendingNoFlyPreview);
+    }
+    pendingNoFlyPreview = L.polygon(pendingNoFlyPoints.map(point => [point.lat, point.lon]), {
+      color: '#ef476f',
+      weight: 2,
+      fillColor: '#ef476f',
+      fillOpacity: 0.08,
+      dashArray: '5 6'
+    }).addTo(map);
+    openNoFlyZoneModal('polygon', { points: pendingNoFlyPoints.map(point => ({ lat: point.lat, lon: point.lon })) });
+  }
+
   function updateSpeedControls(multiplier) {
     speedMultiplier = Number(multiplier) || 1;
     document.getElementById('speedMultiplierValue').innerText = `${speedMultiplier.toFixed(1)}x`;
-    document.querySelectorAll('.speed-button').forEach(button => button.classList.remove('active'));
-    const activeButton = document.getElementById(`speed${Math.round(speedMultiplier)}x`);
-    if (activeButton) activeButton.classList.add('active');
+    const speedSlider = document.getElementById('speedSlider');
+    const speedSliderValue = document.getElementById('speedSliderValue');
+    if (speedSlider) speedSlider.value = Math.round(speedMultiplier);
+    if (speedSliderValue) speedSliderValue.innerText = `${Math.round(speedMultiplier)}x`;
   }
 
   async function setDemoSpeed(multiplier) {
@@ -269,6 +1106,76 @@
     } catch (err) {
       setMessage(err.message || 'Failed to update demo speed.', true);
     }
+  }
+
+  function onSpeedSliderInput() {
+    const slider = document.getElementById('speedSlider');
+    document.getElementById('speedSliderValue').innerText = `${slider.value}x`;
+  }
+
+  async function commitSpeedSlider() {
+    const slider = document.getElementById('speedSlider');
+    await setDemoSpeed(Number(slider.value));
+  }
+
+  function triggerCelebration(message) {
+    const layer = document.getElementById('celebrationLayer');
+    if (!layer) return;
+    layer.innerHTML = '';
+    const colors = ['#2a9d8f', '#4d96ff', '#ff7f51', '#ffd166', '#8352a5', '#ef476f'];
+    for (let index = 0; index < 104; index += 1) {
+      const piece = document.createElement('div');
+      piece.className = 'confetti-piece';
+      piece.style.left = `${Math.random() * 100}%`;
+      piece.style.background = colors[index % colors.length];
+      piece.style.animationDelay = `${Math.random() * 0.25}s`;
+      piece.style.setProperty('--drift', `${(Math.random() - 0.5) * 220}px`);
+      piece.style.width = `${8 + Math.random() * 6}px`;
+      piece.style.height = `${14 + Math.random() * 10}px`;
+      layer.appendChild(piece);
+    }
+    playCelebrationSound();
+    if (celebrationTimer) clearTimeout(celebrationTimer);
+    celebrationTimer = setTimeout(() => {
+      layer.innerHTML = '';
+    }, 3200);
+    if (message) {
+      setMessage(message);
+    }
+  }
+
+  function playCelebrationSound() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!celebrationAudioContext) {
+      celebrationAudioContext = new AudioContextClass();
+    }
+    const ctx = celebrationAudioContext;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    const now = ctx.currentTime;
+    const notes = [
+      { freq: 523.25, start: 0.00, duration: 0.16 },
+      { freq: 659.25, start: 0.12, duration: 0.16 },
+      { freq: 783.99, start: 0.24, duration: 0.2 },
+      { freq: 1046.5, start: 0.44, duration: 0.34 }
+    ];
+    notes.forEach(note => {
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(note.freq, now + note.start);
+      gain.gain.setValueAtTime(0.0001, now + note.start);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + note.start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + note.start + note.duration);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(now + note.start);
+      oscillator.stop(now + note.start + note.duration + 0.02);
+    });
+    if (celebrationSoundTimer) clearTimeout(celebrationSoundTimer);
+    celebrationSoundTimer = setTimeout(() => {}, 900);
   }
 
   function updateTargetMarker(lat, lon) {
@@ -334,26 +1241,86 @@
 
   function updateDispatchSummary(summary, mission = null) {
     const counts = summary?.counts || { green: 0, blue: 0, garbage: 0 };
+    const totalBins = summary?.total_bins ?? 0;
+    const priorityFormula = summary?.priority_formula || 'Priority formula will appear after the survey results are available.';
+    const missionStatus = String(mission?.status || '').toLowerCase();
+    const completedWaypoints = mission?.completed_waypoints ?? 0;
+    const totalWaypoints = mission?.total_waypoints ?? 0;
+    const surveyComplete = totalBins > 0
+      && totalWaypoints > 0
+      && completedWaypoints >= totalWaypoints
+      && ['completed', 'complete', 'arrived', 'done'].includes(missionStatus);
     document.getElementById('dispatchGreenCount').innerText = counts.green ?? 0;
     document.getElementById('dispatchBlueCount').innerText = counts.blue ?? 0;
     document.getElementById('dispatchGarbageCount').innerText = counts.garbage ?? 0;
-    document.getElementById('dispatchTotalCount').innerText = summary?.total_bins ?? 0;
+    document.getElementById('dispatchTotalCount').innerText = totalBins;
     document.getElementById('dispatchMessage').innerText = mission?.message || summary?.dispatch_message || 'Select a zone to calculate the number of bins and the addresses for dispatch.';
     document.getElementById('flyZoneButton').disabled = !selectedZone;
-    document.getElementById('dispatchSurveyProgress').innerText = `${mission?.completed_waypoints ?? 0} / ${mission?.total_waypoints ?? 0}`;
+    document.getElementById('dispatchSurveyProgress').innerText = `${completedWaypoints} / ${totalWaypoints}`;
+    document.getElementById('dispatchPriorityFormula').innerText = priorityFormula;
+    document.getElementById('dispatchPickupNote').innerText = surveyComplete
+      ? `${totalBins} bin(s) are awaiting pickup from the completed zone survey.`
+      : 'The pickup total appears on the Dispatch Details tab after the survey is fully complete.';
     const list = document.getElementById('dispatchAddressList');
+    const emptyState = document.getElementById('dispatchEmptyState');
     list.innerHTML = '';
-    (summary?.addresses || []).forEach(item => {
+    const addresses = surveyComplete ? (summary?.addresses || []) : [];
+    addresses.forEach(item => {
       const card = document.createElement('div');
       card.className = 'address-item';
-      card.innerHTML = `<div class="address-item-title">${item.label}</div><div class="address-item-copy">${item.address}</div><div class="address-item-copy">${item.lat.toFixed(5)}, ${item.lon.toFixed(5)}</div>`;
+      const priorityLevel = String(item.priority || 'NORMAL').toUpperCase();
+      const priorityClass = `priority-${priorityLevel.toLowerCase()}`;
+      const conditionText = String(item.condition || 'standard').replaceAll('_', ' ');
+      const requestState = item.duplicate_open_request
+        ? 'Duplicate open request avoided'
+        : item.has_open_request
+          ? `Open request ${item.open_request_id || item.request_id || ''}`.trim()
+          : `Request ${item.request_id || 'pending'}`;
+      const confidencePercent = Math.round((Number(item.inspection_confidence ?? 0.9) || 0.9) * 100);
+      card.innerHTML = `
+        <div class="address-item-topline">
+          <div class="address-item-title">${item.label}</div>
+          <span class="priority-chip ${priorityClass}">${priorityLevel} · ${item.priority_score}</span>
+        </div>
+        <div class="address-item-copy">${item.address}</div>
+        <div class="address-item-copy">${item.lat.toFixed(5)}, ${item.lon.toFixed(5)}</div>
+        <div class="address-item-meta">
+          <span class="meta-pill">Condition: ${conditionText}</span>
+          <span class="meta-pill">Location: ${String(item.location_importance || 'residential')}</span>
+          <span class="meta-pill">Confidence: ${confidencePercent}%</span>
+          ${item.loose_garbage_detected ? '<span class="meta-pill">Loose garbage detected</span>' : ''}
+          <span class="meta-pill">${requestState}</span>
+        </div>
+      `;
       list.appendChild(card);
     });
+    if (addresses.length) {
+      emptyState.style.display = 'none';
+      list.style.display = 'flex';
+    } else {
+      list.style.display = 'none';
+      emptyState.style.display = 'block';
+      emptyState.innerHTML = surveyComplete
+        ? '<strong>No bins found</strong>The zone survey completed successfully, but no bins are currently waiting in the selected zone.'
+        : '<strong>Survey pending</strong>Fly the selected zone to collect the verified list of bin locations and addresses for dispatch.';
+    }
+    updateDispatchTabBadge(surveyComplete ? totalBins : 0);
+  }
+
+  function updateDispatchTabBadge(count) {
+    const badge = document.getElementById('dispatchTabBadge');
+    if (!badge) return;
+    const safeCount = Math.max(0, Number(count) || 0);
+    badge.innerText = String(safeCount);
+    badge.classList.toggle('visible', safeCount > 0);
   }
 
   function setMapMode(mode) {
     activeMapMode = mode;
+    activeNoFlyMode = null;
     pendingZoneCorner = null;
+    clearNoFlyDrawing();
+    resetNoFlyModeButtons();
     document.querySelectorAll('.mode-button').forEach(button => button.classList.remove('active'));
     const buttonMap = { green: 'modeGreen', blue: 'modeBlue', garbage: 'modeGarbage', zone: 'modeZone' };
     if (buttonMap[mode]) document.getElementById(buttonMap[mode]).classList.add('active');
@@ -368,9 +1335,13 @@
 
   function clearMapMode() {
     activeMapMode = null;
+    activeNoFlyMode = null;
     pendingZoneCorner = null;
+    clearNoFlyDrawing();
+    resetNoFlyModeButtons();
     document.querySelectorAll('.mode-button').forEach(button => button.classList.remove('active'));
     document.getElementById('toolHint').innerText = 'Pick a tool, then click the GPS map to place bins or choose a two-corner dispatch zone.';
+    document.getElementById('noFlyHint').innerText = 'Choose a no-fly-zone shape, click the map to draw it, then name and save it.';
   }
 
   async function reverseGeocode(lat, lon) {
@@ -382,20 +1353,32 @@
 
   async function placeWasteBin(binType, lat, lon) {
     const style = binStyles[binType];
-    setMessage(`Resolving address for ${style.label.toLowerCase()}...`);
-    suppressStatusPollingError = true;
-    let address = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-    try { address = await reverseGeocode(lat, lon); } catch (err) { console.error(err); }
+    const fallbackAddress = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    setMessage(`Placing ${style.label.toLowerCase()}...`);
     try {
-      await fetchJson('/bins', {
+      const created = await fetchJson('/bins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bin_type: binType, lat, lon, address, label: style.label })
+        body: JSON.stringify({ bin_type: binType, lat, lon, address: fallbackAddress, label: style.label })
       });
       await refreshDispatchData();
-      setMessage(`${style.label} placed at ${address}`);
-    } finally {
-      suppressStatusPollingError = false;
+      setMessage(`${style.label} placed. Resolving address...`);
+      reverseGeocode(lat, lon)
+        .then(async address => {
+          await fetchJson(`/bins/${created.bin.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address })
+          });
+          await refreshDispatchData();
+          setMessage(`${style.label} placed at ${address}`);
+        })
+        .catch(err => {
+          console.error(err);
+          setMessage(`${style.label} placed at ${fallbackAddress}`);
+        });
+    } catch (err) {
+      setMessage(err.message || 'Failed to place waste bin.', true);
     }
   }
 
@@ -420,7 +1403,12 @@
   function drawZoneRectangle(zone) {
     if (!zone) return;
     if (zoneRectangle) map.removeLayer(zoneRectangle);
-    zoneRectangle = L.rectangle([[zone.south, zone.west], [zone.north, zone.east]], { color: '#ef476f', weight: 2, fillOpacity: 0.08 }).addTo(map);
+    zoneRectangle = L.rectangle([[zone.south, zone.west], [zone.north, zone.east]], {
+      color: '#7a8f32',
+      weight: 2,
+      fillColor: '#a4c24d',
+      fillOpacity: 0.14
+    }).addTo(map);
   }
 
   async function submitZone(zone) {
@@ -447,13 +1435,19 @@
     return { lat: (zone.south + zone.north) / 2, lon: (zone.west + zone.east) / 2 };
   }
 
+  function resetNavigationProgressUI() {
+    document.getElementById('progressSection').style.display = 'none';
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('progressPercent').innerText = '0%';
+    document.getElementById('distanceValue').innerText = '0.00';
+    document.getElementById('timeElapsed').innerText = 'Time: 0s';
+  }
+
   async function flyToSelectedZone() {
     if (!selectedZone) return setMessage('Define a zone before dispatching the drone.', true);
     const center = getZoneCenter(selectedZone);
     if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lon)) return setMessage('Selected zone does not have valid center coordinates.', true);
     suppressStatusPollingError = true;
-    navigationStartTime = Date.now();
-    navigationStartDistance = 0;
     updateTargetMarker(center.lat, center.lon);
     updateStatus('surveying', 'Surveying Zone...');
     setMessage('Dispatching drone to survey the selected zone...');
@@ -468,10 +1462,21 @@
         updateDispatchSummary(data.summary, { status: 'in_progress', message: data.summary.dispatch_message, completed_waypoints: 0, total_waypoints: 0 });
       }
       if (data.center) updateTargetMarker(Number(data.center.lat), Number(data.center.lon));
+      navigationStartTime = Date.now();
+      navigationStartDistance = 0;
       setMessage(data.message || 'Drone dispatched to survey the zone.');
+      if (Array.isArray(data.warnings) && data.warnings.length) {
+        showMapAlert(data.warnings[0], 'warning');
+      } else if (data.rerouted) {
+        showMapAlert('Route recalculated to avoid restricted airspace.', 'warning');
+      } else {
+        showMapAlert(data.message || 'Drone dispatched to survey the zone.', 'success', 'Mission Started');
+      }
     } catch (err) {
       updateStatus('error', 'Zone Dispatch Error');
+      resetNavigationProgressUI();
       setMessage(err.message || 'Failed to fly drone to selected zone.', true);
+      showMapAlert(err.message || 'Failed to fly drone to selected zone.', 'error');
     } finally {
       suppressStatusPollingError = false;
     }
@@ -537,6 +1542,7 @@
       if (showMessage) setMessage(`Weather synced to AirSim: rain ${payload.rain}%, wind ${payload.wind}%, snow ${payload.snow}%.`);
     } catch (err) {
       setMessage(err.message || 'Failed to sync weather to AirSim.', true);
+      showMapAlert(err.message || 'Failed to sync weather to AirSim.', 'error');
     }
   }
 
@@ -553,8 +1559,6 @@
   }
 
   async function sendDroneToDestination(lat, lon, label) {
-    navigationStartTime = Date.now();
-    navigationStartDistance = 0;
     updateTargetMarker(lat, lon);
     updateStatus('flying', 'Navigating...');
     setMessage(`Sending ${label} ${lat.toFixed(5)}, ${lon.toFixed(5)}...`);
@@ -564,10 +1568,21 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lon })
       });
+      navigationStartTime = Date.now();
+      navigationStartDistance = 0;
       setMessage(data.message || 'Navigation started.');
+      if (Array.isArray(data.warnings) && data.warnings.length) {
+        showMapAlert(data.warnings[0], 'warning');
+      } else if (data.rerouted) {
+        showMapAlert('Route recalculated to avoid restricted airspace.', 'warning');
+      } else {
+        showMapAlert(data.message || 'Navigation started.', 'success', 'Mission Started');
+      }
     } catch (err) {
       updateStatus('error', 'Navigation Error');
+      resetNavigationProgressUI();
       setMessage(err.message, true);
+      showMapAlert(err.message || 'Navigation blocked.', 'error');
     }
   }
 
@@ -604,21 +1619,45 @@
   }
 
   async function startDrone() {
+    resetNavigationProgressUI();
     updateStatus('taking_off', 'Taking Off...');
     setMessage('Sending takeoff command to AirSim...');
     try {
       const data = await fetchJson('/start');
       updateStatus('idle', 'Ready to Fly');
       setMessage(data.message || 'Takeoff complete.');
+      showMapAlert(data.message || 'Takeoff complete.', 'success', 'Drone Ready');
     } catch (err) {
       updateStatus('error', 'Takeoff Failed');
       setMessage(err.message, true);
+      showMapAlert(err.message || 'Takeoff failed.', 'error');
     }
   }
 
   map.on('click', function(e) {
     const lat = e.latlng.lat;
     const lon = e.latlng.lng;
+    if (activeNoFlyMode) {
+      if (activeNoFlyMode === 'polygon') {
+        pendingNoFlyPoints.push({ lat, lon });
+        if (pendingNoFlyPreview) map.removeLayer(pendingNoFlyPreview);
+        if (pendingNoFlyPoints.length >= 2) {
+          const previewFactory = pendingNoFlyPoints.length >= 3 ? L.polygon : L.polyline;
+          pendingNoFlyPreview = previewFactory(
+            pendingNoFlyPoints.map(point => [point.lat, point.lon]),
+            {
+              color: '#ef476f',
+              weight: 2,
+              fillColor: '#ef476f',
+              fillOpacity: pendingNoFlyPoints.length >= 3 ? 0.08 : 0,
+              dashArray: '5 6'
+            }
+          ).addTo(map);
+        }
+        document.getElementById('noFlyHint').innerText = `Polygon point ${pendingNoFlyPoints.length} captured. Add more points or click Finish Polygon.`;
+        return;
+      }
+    }
     if (activeMapMode === 'green' || activeMapMode === 'blue' || activeMapMode === 'garbage') {
       placeWasteBin(activeMapMode, lat, lon).catch(err => setMessage(err.message || 'Failed to place waste bin.', true));
       return;
@@ -658,17 +1697,31 @@
       })
       .then(data => {
         if (typeof data.lat !== 'number' || typeof data.lon !== 'number') throw new Error('Position endpoint did not return valid coordinates.');
+        const previousStatus = lastFlightStatus;
         lastFlightStatus = data.status;
         updateFeedbackLoop(data.feedback, data.weather);
         if (data.demo) updateSpeedControls(data.demo.speed_multiplier);
+        if (data.no_fly_zones) renderNoFlyZones(data.no_fly_zones);
+        if (data.flight_plan?.warnings?.length && (data.status === 'flying' || data.status === 'surveying')) {
+          setMessage(data.flight_plan.warnings[0]);
+          showMapAlert(data.flight_plan.warnings[0], 'warning');
+        }
         if (data.dispatch) {
           if (data.dispatch.last_zone) { selectedZone = data.dispatch.last_zone; drawZoneRectangle(data.dispatch.last_zone); }
           updateDispatchSummary(data.dispatch.last_summary || null, data.dispatch.mission || null);
         }
         droneMarker.setLatLng([data.lat, data.lon]);
+        updateDroneMarkerDetails(data);
         map.setView([data.lat, data.lon], map.getZoom());
         updateStatus(data.status, getStatusMessage(data.status));
         setMessage(data.message || getStatusMessage(data.status), data.status === 'error');
+        if (data.status === 'arrived' && previousStatus !== 'arrived') {
+          triggerCelebration(data.message || 'Mission complete!');
+          showMapAlert(data.message || 'Mission complete!', 'success', 'Mission Complete');
+        }
+        if (data.status === 'error' && previousStatus !== 'error') {
+          showMapAlert(data.message || 'Navigation error.', 'error');
+        }
         document.getElementById('curLat').innerText = data.lat.toFixed(4);
         document.getElementById('curLon').innerText = data.lon.toFixed(4);
         document.getElementById('curAlt').innerText = Math.abs(data.z).toFixed(1) + 'm';
@@ -694,10 +1747,12 @@
         if (suppressStatusPollingError) return;
         updateStatus('error', 'Status Error');
         setMessage(err.message || 'Could not reach Flask status endpoint.', true);
+        showMapAlert(err.message || 'Could not reach Flask status endpoint.', 'error');
       });
   }, 1000);
 
   refreshDispatchData().catch(err => console.error(err));
+  refreshNoFlyZones().catch(err => console.error(err));
   fetchJson('/speed').then(data => updateSpeedControls(data.speed_multiplier)).catch(() => {});
 </script>
 </body>

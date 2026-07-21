@@ -55,7 +55,7 @@ MAX_DETOUR_DISTANCE = 18.0
 MAX_WAYPOINTS = 2
 MAX_DISTANCE_BACKTRACK_FACTOR = 1.35
 FEEDBACK_LOOP_INTERVAL_SECONDS = 3.0
-MAX_SPEED_MULTIPLIER = 3.0
+MAX_SPEED_MULTIPLIER = 10.0
 
 
 # ============ HELPER: GPS <-> SIMULATION ============
@@ -568,6 +568,22 @@ def fly_to_intelligent(lat, lon, feedback_hook=None):
                 f"waypoint ({current_target[0]:.1f}, {current_target[1]:.1f}), "
                 f"altitude {abs(cruise_altitude):.1f}m"
             )
+
+            # When AirSim reports a persistent collision at the current position,
+            # replanning alone is not enough because the loop can keep generating
+            # new detours without ever issuing a movement command. Make a short
+            # escape step toward the detour waypoint so the drone can break free.
+            escape_dx = current_target[0] - pos["x"]
+            escape_dy = current_target[1] - pos["y"]
+            escape_dx_norm, escape_dy_norm = normalize_vector(escape_dx, escape_dy)
+            escape_speed = min(MAX_SPEED * get_speed_multiplier(), 4.0 * get_speed_multiplier())
+            if escape_dx_norm != 0.0 or escape_dy_norm != 0.0:
+                move_step(
+                    escape_dx_norm * escape_speed,
+                    escape_dy_norm * escape_speed,
+                    cruise_altitude,
+                    duration=0.35,
+                )
 
             attempts_stuck = 0
             collision_cooldown = max(0, collision_cooldown - 1)

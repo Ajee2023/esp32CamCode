@@ -2,26 +2,39 @@ import math
 import threading
 import time
 
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, render_template, request
 
 from drone_control import (
-    get_position,
-    set_sim_weather,
-    takeoff,
-    fly_to,
     flight_progress,
-    set_speed_multiplier,
+    fly_to,
+    get_multirotor_state,
+    get_position,
     get_speed_multiplier,
+    set_sim_weather,
+    set_speed_multiplier,
+    takeoff,
 )
+from no_fly_zones import (
+    create_zone,
+    delete_zone,
+    ensure_database,
+    get_zone,
+    list_zones,
+    set_zone_active,
+    update_zone,
+    validate_route_plan,
+    validate_zone_payload,
+)
+from priority_service import calculate_priority, prioritize_dispatch_items, utc_now_iso
 
 app = Flask(__name__)
 
 state_lock = threading.Lock()
 
-nav_state = {
-    "status": "idle",
-    "message": "",
-}
+HOME_POINT = {"lat": 43.7315, "lon": -79.7624}
+DRONE_ID = "DRONE-001"
+
+nav_state = {"status": "idle", "message": ""}
 
 zone_mission_state = {
     "status": "idle",
@@ -37,15 +50,8 @@ bin_state = {
     "last_summary": None,
 }
 
-weather_state = {
-    "rain": 0,
-    "wind": 0,
-    "snow": 0,
-}
-
-demo_state = {
-    "speed_multiplier": get_speed_multiplier(),
-}
+weather_state = {"rain": 0, "wind": 0, "snow": 0}
+demo_state = {"speed_multiplier": get_speed_multiplier()}
 
 feedback_state = {
     "cycle": 0,
@@ -56,11 +62,14 @@ feedback_state = {
     "reroute_count": 0,
     "active_route": [],
     "sample_input": {
-        "origin": {"lat": 43.7315, "lon": -79.7624},
+        "origin": dict(HOME_POINT),
         "destination": {"lat": 43.7365, "lon": -79.7545},
         "weather": dict(weather_state),
     },
 }
+
+flight_plan_state = {"route_points": [], "warnings": [], "message": ""}
+mission_state = {"active_id": 0}
 
 
 def set_nav_state(status=None, message=None):
@@ -69,6 +78,55 @@ def set_nav_state(status=None, message=None):
             nav_state["status"] = status
         if message is not None:
             nav_state["message"] = message
+
+
+def next_mission_id():
+    with state_lock:
+        mission_state["active_id"] += 1
+        return mission_state["active_id"]
+
+
+def get_active_mission_id():
+    with state_lock:
+        return mission_state["active_id"]
+
+
+def is_active_mission(mission_id):
+    with state_lock:
+        return mission_state["active_id"] == mission_id
+
+
+def reset_progress_state():
+    flight_progress["distance_to_goal"] = 0
+    flight_progress["progress_percent"] = 0
+    flight_progress["target_lat"] = None
+    flight_progress["target_lon"] = None
+    update_route([])
+    update_flight_plan(route_points=[], warnings=[], message="")
+
+
+def get_nav_status():
+    with state_lock:
+        return nav_state["status"]
+
+
+def update_flight_plan(route_points=None, warnings=None, message=None):
+    with state_lock:
+        if route_points is not None:
+            flight_plan_state["route_points"] = [dict(point) for point in route_points]
+        if warnings is not None:
+            flight_plan_state["warnings"] = list(warnings)
+        if message is not None:
+            flight_plan_state["message"] = message
+
+
+def get_flight_plan_snapshot():
+    with state_lock:
+        return {
+            "route_points": [dict(point) for point in flight_plan_state["route_points"]],
+            "warnings": list(flight_plan_state["warnings"]),
+            "message": flight_plan_state["message"],
+        }
 
 
 def get_bins_snapshot():
@@ -96,15 +154,20 @@ def find_bin_by_id(bin_id):
 def update_bin_condition_fields(bin_item):
     is_overflowing = bool(bin_item.get("is_overflowing", False))
     bin_item["condition"] = "overflowing" if is_overflowing else "standard"
-    bin_item["priority"] = "high" if is_overflowing else "normal"
-    bin_item["priority_score"] = 90 if is_overflowing else 30
+    bin_item.setdefault("last_pickup_at", "")
+    bin_item.setdefault("request_created_at", utc_now_iso())
+    bin_item.setdefault("location_importance", "")
+    bin_item.setdefault("inspection_confidence", 0.9)
+    bin_item.setdefault("loose_garbage_detected", False)
+    bin_item.setdefault("has_open_request", False)
+    bin_item.setdefault("request_id", f"BIN-{bin_item.get('id', 'UNKNOWN')}")
+    bin_item.setdefault("open_request_id", None)
+    bin_item.update(calculate_priority(bin_item))
     return bin_item
 
 
 def point_in_zone(bin_item, zone):
-    lat = bin_item["lat"]
-    lon = bin_item["lon"]
-    return zone["south"] <= lat <= zone["north"] and zone["west"] <= lon <= zone["east"]
+    return zone["south"] <= bin_item["lat"] <= zone["north"] and zone["west"] <= bin_item["lon"] <= zone["east"]
 
 
 def zone_center(zone):
@@ -120,9 +183,7 @@ def build_pending_zone_summary(zone, message=None):
         "total_bins": 0,
         "counts": {"green": 0, "blue": 0, "garbage": 0},
         "addresses": [],
-        "dispatch_message": message or (
-            "Zone selected. Fly the drone across the full zone to collect dispatch details."
-        ),
+        "dispatch_message": message or "Zone selected. Fly the drone across the full zone to collect dispatch details.",
         "survey_complete": False,
     }
 
@@ -146,43 +207,54 @@ def set_zone_mission_state(status=None, message=None, completed_waypoints=None, 
 
 
 def summarize_zone(zone, survey_complete=True):
-    bins = get_bins_snapshot()
-    bins_in_zone = [item for item in bins if point_in_zone(item, zone)]
-
-    counts = {
-        "green": 0,
-        "blue": 0,
-        "garbage": 0,
-    }
+    bins_in_zone = [item for item in get_bins_snapshot() if point_in_zone(item, zone)]
+    prioritized_bins = prioritize_dispatch_items(bins_in_zone)
+    counts = {"green": 0, "blue": 0, "garbage": 0}
     addresses = []
 
-    for item in bins_in_zone:
+    for item in prioritized_bins:
         counts[item["bin_type"]] = counts.get(item["bin_type"], 0) + 1
-        addresses.append({
-            "id": item["id"],
-            "bin_type": item["bin_type"],
-            "label": item.get("label") or item["bin_type"].title(),
-            "condition": item.get("condition", "standard"),
-            "priority": item.get("priority", "normal"),
-            "priority_score": item.get("priority_score", 30),
-            "lat": item["lat"],
-            "lon": item["lon"],
-            "address": item.get("address") or "Address pending",
-        })
+        addresses.append(
+            {
+                "id": item["id"],
+                "bin_type": item["bin_type"],
+                "label": item.get("label") or item["bin_type"].title(),
+                "condition": item.get("condition", "standard"),
+                "priority": item.get("priority_level", "NORMAL"),
+                "priority_score": item.get("priority_score", 30),
+                "request_id": item.get("request_id"),
+                "open_request_id": item.get("open_request_id"),
+                "has_open_request": bool(item.get("has_open_request", False)),
+                "duplicate_open_request": bool(item.get("duplicate_open_request", False)),
+                "location_importance": item.get("location_importance", "residential"),
+                "inspection_confidence": item.get("inspection_confidence", 0.9),
+                "loose_garbage_detected": bool(item.get("loose_garbage_detected", False)),
+                "priority_factors": item.get("priority_factors", {}),
+                "request_created_at": item.get("request_created_at", ""),
+                "last_pickup_at": item.get("last_pickup_at", ""),
+                "lat": item["lat"],
+                "lon": item["lon"],
+                "address": item.get("address") or "Address pending",
+            }
+        )
 
     summary = {
         "zone": zone,
-        "total_bins": len(bins_in_zone),
+        "total_bins": len(prioritized_bins),
         "counts": counts,
         "addresses": addresses,
         "dispatch_message": (
-            f"Dispatch summary ready for {len(bins_in_zone)} bin(s) in the selected zone."
-            if bins_in_zone else
-            "No waste bins found inside the selected zone."
+            f"Dispatch summary ready for {len(prioritized_bins)} bin(s) in the selected zone."
+            if prioritized_bins
+            else "No waste bins found inside the selected zone."
         ),
         "survey_complete": survey_complete,
+        "priority_formula": (
+            "Base priority starts at NORMAL for standard bins and HIGH for overflowing bins, "
+            "then adjusts for bin category, time since last pickup, request age, location importance, "
+            "existing unresolved request, inspection confidence, and loose garbage detection."
+        ),
     }
-
     store_zone_summary(summary)
     return summary
 
@@ -204,6 +276,66 @@ def get_demo_snapshot():
         return dict(demo_state)
 
 
+def map_drone_status(status):
+    mapping = {
+        "idle": "IDLE",
+        "flying": "EN_ROUTE",
+        "surveying": "INSPECTING",
+        "arrived": "IDLE",
+        "taking_off": "EN_ROUTE",
+        "error": "ERROR",
+    }
+    return mapping.get(str(status or "").lower(), "IDLE")
+
+
+def get_current_assignment_id():
+    status = get_nav_status()
+    if status == "surveying":
+        return "ZONE-SURVEY"
+    target_lat = flight_progress.get("target_lat")
+    target_lon = flight_progress.get("target_lon")
+    if status == "flying" and target_lat is not None and target_lon is not None:
+        return f"NAV-{target_lat:.4f}-{target_lon:.4f}"
+    if status == "taking_off":
+        return "TAKEOFF"
+    return None
+
+
+def get_battery_level():
+    try:
+        state = get_multirotor_state()
+    except Exception:
+        return None
+
+    for attr in ("battery_remaining", "battery_level"):
+        value = getattr(state, attr, None)
+        if value is None:
+            continue
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            continue
+        if 0.0 <= value <= 1.0:
+            return round(value * 100, 1)
+        if 0.0 <= value <= 100.0:
+            return round(value, 1)
+    return None
+
+
+def build_drone_snapshot():
+    with state_lock:
+        raw_status = nav_state["status"]
+        message = nav_state["message"]
+    return {
+        "id": DRONE_ID,
+        "status": raw_status,
+        "status_label": map_drone_status(raw_status),
+        "assignment_id": get_current_assignment_id(),
+        "battery_level": get_battery_level(),
+        "message": message,
+    }
+
+
 def apply_weather_state(rain, wind, snow):
     applied = set_sim_weather(rain, wind, snow)
     with state_lock:
@@ -220,7 +352,56 @@ def apply_speed_state(multiplier):
 
 def update_route(points):
     with state_lock:
-        feedback_state["active_route"] = points
+        feedback_state["active_route"] = [dict(point) for point in points]
+
+
+def current_route_start():
+    try:
+        position = get_position()
+        return {"lat": position["lat"], "lon": position["lon"]}
+    except Exception:
+        return dict(HOME_POINT)
+
+
+def validate_zone_survey_plan(zone):
+    current_point = current_route_start()
+    center = zone_center(zone)
+    first_leg = prepare_route_validation(current_point, center)
+    if not first_leg["allowed"]:
+        return first_leg
+
+    survey_waypoints = generate_zone_scan_waypoints(zone)
+    if not survey_waypoints:
+        return first_leg
+
+    cursor = current_point
+    collected_route = [dict(current_point)]
+    collected_warnings = list(first_leg.get("warnings", []))
+    rerouted = bool(first_leg.get("rerouted"))
+
+    for waypoint in survey_waypoints:
+        leg = validate_route_plan(cursor, waypoint, return_destination=HOME_POINT)
+        if not leg["allowed"]:
+            return {
+                "allowed": False,
+                "error": "Dispatch blocked: the selected zone overlaps restricted airspace and cannot be surveyed safely.",
+                "details": leg["error"],
+                "route_points": collected_route,
+                "warnings": collected_warnings,
+            }
+        rerouted = rerouted or bool(leg.get("rerouted"))
+        collected_warnings.extend(leg.get("warnings", []))
+        for point in leg["route_points"][1:]:
+            collected_route.append(dict(point))
+        cursor = {"lat": waypoint["lat"], "lon": waypoint["lon"]}
+
+    return {
+        "allowed": True,
+        "route_points": first_leg["route_points"],
+        "warnings": list(dict.fromkeys(collected_warnings)),
+        "rerouted": rerouted,
+        "message": first_leg.get("message"),
+    }
 
 
 def generate_zone_scan_waypoints(zone):
@@ -228,17 +409,13 @@ def generate_zone_scan_waypoints(zone):
     north = zone["north"]
     west = zone["west"]
     east = zone["east"]
-
     lat_span = max(0.0, north - south)
     lon_span = max(0.0, east - west)
-
     if lat_span == 0.0 and lon_span == 0.0:
-        center = zone_center(zone)
-        return [center]
+        return [zone_center(zone)]
 
     horizontal_scan = lon_span >= lat_span
     lane_spacing = 0.00012
-
     waypoints = []
     if horizontal_scan:
         lane_count = max(2, int(math.ceil(lat_span / lane_spacing)) + 1)
@@ -262,34 +439,26 @@ def generate_zone_scan_waypoints(zone):
             else:
                 waypoints.append({"lat": north, "lon": lon})
                 waypoints.append({"lat": south, "lon": lon})
-
     return waypoints
 
 
 def build_weather_reroute(current_pos, destination, weather):
-    current_lat = current_pos["lat"]
-    current_lon = current_pos["lon"]
-    dest_lat = destination["lat"]
-    dest_lon = destination["lon"]
-
-    dx = dest_lon - current_lon
-    dy = dest_lat - current_lat
+    dx = destination["lon"] - current_pos["lon"]
+    dy = destination["lat"] - current_pos["lat"]
     length = math.hypot(dx, dy)
     if length == 0:
-        return {"lat": dest_lat, "lon": dest_lon}
+        return {"lat": destination["lat"], "lon": destination["lon"]}
 
     severity = max(weather["rain"], weather["wind"], weather["snow"])
     offset_scale = 0.0025 * (severity / 100.0)
-
     perp_x = -dy / length
     perp_y = dx / length
-
-    midpoint_lat = current_lat + (dest_lat - current_lat) * 0.55
-    midpoint_lon = current_lon + (dest_lon - current_lon) * 0.55
-
-    reroute_lat = midpoint_lat + perp_y * offset_scale
-    reroute_lon = midpoint_lon + perp_x * offset_scale
-    return {"lat": reroute_lat, "lon": reroute_lon}
+    midpoint_lat = current_pos["lat"] + (destination["lat"] - current_pos["lat"]) * 0.55
+    midpoint_lon = current_pos["lon"] + (destination["lon"] - current_pos["lon"]) * 0.55
+    return {
+        "lat": midpoint_lat + perp_y * offset_scale,
+        "lon": midpoint_lon + perp_x * offset_scale,
+    }
 
 
 def weather_feedback_hook(context):
@@ -303,11 +472,7 @@ def weather_feedback_hook(context):
     destination = context["destination"]
     time.sleep(0.15)
 
-    set_feedback_stage(
-        "analyze",
-        weather=weather,
-        reason="Checking whether rain, wind, or snow exceeds 50%.",
-    )
+    set_feedback_stage("analyze", weather=weather, reason="Checking whether rain, wind, or snow exceeds 50%.")
     unsafe = any(value > 50 for value in weather.values())
     time.sleep(0.15)
 
@@ -330,11 +495,7 @@ def weather_feedback_hook(context):
             reroute_count=reroute_count,
             reason="Conditions are not safe for flight",
         )
-        result = {
-            "safe": False,
-            "message": "Conditions are not safe for flight",
-            "reroute": reroute,
-        }
+        result = {"safe": False, "message": "Conditions are not safe for flight", "reroute": reroute}
     else:
         route_points = [
             {"lat": current_position["lat"], "lon": current_position["lon"]},
@@ -347,11 +508,7 @@ def weather_feedback_hook(context):
             weather=weather,
             reason="Weather is within safe limits. Continue on current path.",
         )
-        result = {
-            "safe": True,
-            "message": "Weather safe. Continue on current path.",
-            "clear_weather_route": True,
-        }
+        result = {"safe": True, "message": "Weather safe. Continue on current path.", "clear_weather_route": True}
 
     time.sleep(0.15)
     set_feedback_stage(
@@ -362,17 +519,42 @@ def weather_feedback_hook(context):
     return result
 
 
-def begin_navigation(lat, lon, message_prefix="Navigating to"):
-    lat = float(lat)
-    lon = float(lon)
+def prepare_route_validation(start_point, destination_point):
+    validation = validate_route_plan(start_point, destination_point, return_destination=HOME_POINT)
+    update_flight_plan(
+        route_points=validation.get("route_points", [start_point, destination_point]),
+        warnings=validation.get("warnings", []),
+        message=validation.get("message") or validation.get("error") or "",
+    )
+    return validation
 
-    set_nav_state("flying", f"{message_prefix} {lat:.5f}, {lon:.5f}")
-    current_origin = get_position()
-    update_route([
-        {"lat": current_origin["lat"], "lon": current_origin["lon"]},
-        {"lat": lat, "lon": lon},
-    ])
 
+def revalidate_active_route():
+    status = get_nav_status()
+    if status not in {"flying", "surveying"}:
+        return
+    plan = get_flight_plan_snapshot()
+    route_points = plan["route_points"]
+    if len(route_points) < 2:
+        return
+    validation = prepare_route_validation(route_points[0], route_points[-1])
+    if validation["allowed"]:
+        update_route(validation["route_points"])
+        if validation.get("message"):
+            set_nav_state(status, validation["message"])
+        elif validation.get("warnings"):
+            set_nav_state(status, validation["warnings"][0])
+    else:
+        reset_progress_state()
+        set_nav_state("error", validation["error"])
+
+
+def execute_route(route_points, transit_status, completion_message, mission_id):
+    if len(route_points) < 2:
+        raise ValueError("A route requires at least two points.")
+
+    update_route(route_points)
+    update_flight_plan(route_points=route_points)
     with state_lock:
         feedback_state["cycle"] = 0
         feedback_state["stage"] = "sense"
@@ -381,43 +563,71 @@ def begin_navigation(lat, lon, message_prefix="Navigating to"):
         feedback_state["last_reroute"] = None
         feedback_state["reroute_count"] = 0
         feedback_state["sample_input"] = {
-            "origin": {"lat": current_origin["lat"], "lon": current_origin["lon"]},
-            "destination": {"lat": lat, "lon": lon},
+            "origin": {"lat": route_points[0]["lat"], "lon": route_points[0]["lon"]},
+            "destination": {"lat": route_points[-1]["lat"], "lon": route_points[-1]["lon"]},
             "weather": dict(weather_state),
         }
 
+    for index, waypoint in enumerate(route_points[1:], start=1):
+        if not is_active_mission(mission_id):
+            return
+        set_nav_state(
+            transit_status,
+            f"{transit_status.title()} via waypoint {index}/{len(route_points) - 1} at {waypoint['lat']:.5f}, {waypoint['lon']:.5f}",
+        )
+        with state_lock:
+            feedback_state["sample_input"]["destination"] = {"lat": waypoint["lat"], "lon": waypoint["lon"]}
+        fly_to(waypoint["lat"], waypoint["lon"], feedback_hook=weather_feedback_hook)
+    if not is_active_mission(mission_id):
+        return
+    set_nav_state("arrived", completion_message)
+
+
+def begin_navigation(lat, lon, route_points=None, message_prefix="Navigating to"):
+    lat = float(lat)
+    lon = float(lon)
+    current_origin = get_position()
+    base_route = route_points or [
+        {"lat": current_origin["lat"], "lon": current_origin["lon"]},
+        {"lat": lat, "lon": lon},
+    ]
+    mission_id = next_mission_id()
+    reset_progress_state()
+    set_nav_state("flying", f"{message_prefix} {lat:.5f}, {lon:.5f}")
+
     def nav_thread():
         try:
-            fly_to(lat, lon, feedback_hook=weather_feedback_hook)
-            set_nav_state("arrived", "Destination reached.")
-        except Exception as e:
-            print(f"Navigation error: {e}")
-            set_nav_state("error", f"Navigation error: {e}")
+            execute_route(base_route, "flying", "Destination reached.", mission_id)
+        except Exception as exc:
+            print(f"Navigation error: {exc}")
+            reset_progress_state()
+            set_nav_state("error", f"Navigation error: {exc}")
 
-    thread = threading.Thread(target=nav_thread, daemon=True)
-    thread.start()
+    threading.Thread(target=nav_thread, daemon=True).start()
 
 
 def begin_zone_survey(zone):
     waypoints = generate_zone_scan_waypoints(zone)
+    mission_id = next_mission_id()
+    reset_progress_state()
     set_zone_mission_state(
         status="in_progress",
         message=f"Survey mission started with {len(waypoints)} scan waypoint(s).",
         completed_waypoints=0,
         total_waypoints=len(waypoints),
     )
-    store_zone_summary(build_pending_zone_summary(
-        zone,
-        message="Drone is surveying the selected zone. Dispatch summary will appear after full coverage.",
-    ))
-
+    store_zone_summary(
+        build_pending_zone_summary(
+            zone,
+            message="Drone is surveying the selected zone. Dispatch summary will appear after full coverage.",
+        )
+    )
+    current_origin = get_position()
+    survey_route = [{"lat": current_origin["lat"], "lon": current_origin["lon"]}] + [dict(point) for point in waypoints]
+    update_route(survey_route)
+    update_flight_plan(route_points=survey_route)
     first_target = waypoints[0] if waypoints else zone_center(zone)
     set_nav_state("surveying", "Surveying selected zone.")
-    current_origin = get_position()
-    update_route(
-        [{"lat": current_origin["lat"], "lon": current_origin["lon"]}] +
-        [dict(point) for point in waypoints]
-    )
 
     with state_lock:
         feedback_state["cycle"] = 0
@@ -436,23 +646,25 @@ def begin_zone_survey(zone):
         try:
             total_waypoints = len(waypoints)
             for index, point in enumerate(waypoints, start=1):
+                if not is_active_mission(mission_id):
+                    return
                 set_nav_state(
                     "surveying",
-                    f"Surveying zone waypoint {index}/{total_waypoints} at "
-                    f"{point['lat']:.5f}, {point['lon']:.5f}",
+                    f"Surveying zone waypoint {index}/{total_waypoints} at {point['lat']:.5f}, {point['lon']:.5f}",
                 )
-                pos = get_position()
-                update_route(
-                    [{"lat": pos["lat"], "lon": pos["lon"]}] +
-                    [dict(point)] +
-                    [dict(item) for item in waypoints[index:]]
-                )
+                position = get_position()
+                start_point = {"lat": position["lat"], "lon": position["lon"]}
+                validation = prepare_route_validation(start_point, {"lat": point["lat"], "lon": point["lon"]})
+                if not validation["allowed"]:
+                    raise RuntimeError(validation["error"])
+                route_points = validation["route_points"]
+                update_route(route_points + [dict(item) for item in waypoints[index:]])
                 with state_lock:
-                    feedback_state["sample_input"]["destination"] = {
-                        "lat": point["lat"],
-                        "lon": point["lon"],
-                    }
-                fly_to(point["lat"], point["lon"], feedback_hook=weather_feedback_hook)
+                    feedback_state["sample_input"]["destination"] = {"lat": point["lat"], "lon": point["lon"]}
+                for segment_end in route_points[1:]:
+                    if not is_active_mission(mission_id):
+                        return
+                    fly_to(segment_end["lat"], segment_end["lon"], feedback_hook=weather_feedback_hook)
                 set_zone_mission_state(
                     status="in_progress",
                     message=f"Completed {index} of {total_waypoints} survey waypoint(s).",
@@ -467,21 +679,24 @@ def begin_zone_survey(zone):
                 completed_waypoints=total_waypoints,
                 total_waypoints=total_waypoints,
             )
+            if not is_active_mission(mission_id):
+                return
             set_nav_state("arrived", final_summary["dispatch_message"])
-        except Exception as e:
+        except Exception as exc:
             pending_summary = build_pending_zone_summary(
                 zone,
                 message="Zone survey did not complete. Dispatch summary is still pending.",
             )
             store_zone_summary(pending_summary)
-            set_zone_mission_state(status="error", message=f"Zone survey error: {e}")
-            print(f"Zone survey error: {e}")
-            set_nav_state("error", f"Zone survey error: {e}")
+            set_zone_mission_state(status="error", message=f"Zone survey error: {exc}")
+            print(f"Zone survey error: {exc}")
+            reset_progress_state()
+            set_nav_state("error", f"Zone survey error: {exc}")
 
-    thread = threading.Thread(target=survey_thread, daemon=True)
-    thread.start()
+    threading.Thread(target=survey_thread, daemon=True).start()
 
 
+ensure_database()
 try:
     apply_weather_state(0, 0, 0)
 except Exception:
@@ -497,20 +712,24 @@ def home():
 def position():
     try:
         pos = get_position()
-    except Exception as e:
-        set_nav_state("error", f"Position error: {e}")
-        return jsonify({
-            "status": nav_state["status"],
-            "message": nav_state["message"],
-            "distance_to_goal": flight_progress.get("distance_to_goal", 0),
-            "progress_percent": flight_progress.get("progress_percent", 0),
-            "target_lat": flight_progress.get("target_lat", None),
-            "target_lon": flight_progress.get("target_lon", None),
-            "feedback": feedback_state,
-            "weather": get_weather_snapshot(),
-            "dispatch": get_dispatch_snapshot(),
-            "demo": get_demo_snapshot(),
-        }), 500
+    except Exception as exc:
+        set_nav_state("error", f"Position error: {exc}")
+        return jsonify(
+            {
+                "status": nav_state["status"],
+                "message": nav_state["message"],
+                "distance_to_goal": flight_progress.get("distance_to_goal", 0),
+                "progress_percent": flight_progress.get("progress_percent", 0),
+                "target_lat": flight_progress.get("target_lat"),
+                "target_lon": flight_progress.get("target_lon"),
+                "feedback": feedback_state,
+                "weather": get_weather_snapshot(),
+                "dispatch": get_dispatch_snapshot(),
+                "demo": get_demo_snapshot(),
+                "no_fly_zones": list_zones(include_inactive=True),
+                "flight_plan": get_flight_plan_snapshot(),
+            }
+        ), 500
 
     with state_lock:
         pos["status"] = nav_state["status"]
@@ -519,13 +738,91 @@ def position():
 
     pos["distance_to_goal"] = flight_progress.get("distance_to_goal", 0)
     pos["progress_percent"] = flight_progress.get("progress_percent", 0)
-    pos["target_lat"] = flight_progress.get("target_lat", None)
-    pos["target_lon"] = flight_progress.get("target_lon", None)
+    pos["target_lat"] = flight_progress.get("target_lat")
+    pos["target_lon"] = flight_progress.get("target_lon")
     pos["weather"] = get_weather_snapshot()
     pos["dispatch"] = get_dispatch_snapshot()
     pos["demo"] = get_demo_snapshot()
-
+    pos["drone"] = build_drone_snapshot()
+    pos["no_fly_zones"] = list_zones(include_inactive=True)
+    pos["flight_plan"] = get_flight_plan_snapshot()
     return jsonify(pos)
+
+
+@app.route("/no-fly-zones", methods=["GET", "POST"])
+def no_fly_zones_collection():
+    if request.method == "GET":
+        return jsonify({"zones": list_zones(include_inactive=True)})
+
+    data = request.json or {}
+    try:
+        payload = validate_zone_payload(data)
+    except (TypeError, ValueError, KeyError) as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    zone = create_zone(**payload)
+    revalidate_active_route()
+    return jsonify({"status": "ok", "zone": zone})
+
+
+@app.route("/no-fly-zones/<int:zone_id>", methods=["PUT", "DELETE"])
+def no_fly_zone_item(zone_id):
+    existing = get_zone(zone_id)
+    if not existing:
+        return jsonify({"status": "error", "message": "No-fly zone not found."}), 404
+
+    if request.method == "DELETE":
+        delete_zone(zone_id)
+        revalidate_active_route()
+        return jsonify({"status": "ok"})
+
+    data = request.json or {}
+    merged = {
+        "name": data.get("name", existing["name"]),
+        "description": data.get("description", existing["description"]),
+        "shape_type": data.get("shape_type", existing["shape_type"]),
+        "geometry": data.get("geometry", existing["geometry"]),
+        "buffer_distance_meters": data.get("buffer_distance_meters", existing["buffer_distance_meters"]),
+        "is_active": data.get("is_active", existing["is_active"]),
+        "created_by": existing["created_by"],
+    }
+    try:
+        payload = validate_zone_payload(merged)
+    except (TypeError, ValueError, KeyError) as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    zone = update_zone(
+        zone_id,
+        payload["name"],
+        payload["description"],
+        payload["shape_type"],
+        payload["geometry"],
+        payload["buffer_distance_meters"],
+        payload["is_active"],
+    )
+    revalidate_active_route()
+    return jsonify({"status": "ok", "zone": zone})
+
+
+@app.route("/no-fly-zones/<int:zone_id>/active", methods=["POST"])
+def no_fly_zone_active(zone_id):
+    data = request.json or {}
+    if "is_active" not in data:
+        return jsonify({"status": "error", "message": "is_active is required."}), 400
+    zone = set_zone_active(zone_id, bool(data["is_active"]))
+    if not zone:
+        return jsonify({"status": "error", "message": "No-fly zone not found."}), 404
+    revalidate_active_route()
+    return jsonify({"status": "ok", "zone": zone})
+
+
+@app.route("/no-fly-zones", methods=["DELETE"])
+def clear_no_fly_zones():
+    zones = list_zones(include_inactive=True)
+    for zone in zones:
+        delete_zone(zone["id"])
+    next_mission_id()
+    reset_progress_state()
+    set_nav_state("idle", "All no-fly zones cleared.")
+    return jsonify({"status": "ok", "deleted": len(zones)})
 
 
 @app.route("/bins", methods=["GET", "POST", "DELETE"])
@@ -567,10 +864,17 @@ def bins():
             "lon": lon,
             "address": str(data.get("address") or "").strip() or "Address pending",
             "label": str(data.get("label") or "").strip() or f"{bin_type.title()} Bin",
+            "last_pickup_at": str(data.get("last_pickup_at") or "").strip(),
+            "request_created_at": str(data.get("request_created_at") or "").strip() or utc_now_iso(),
+            "location_importance": str(data.get("location_importance") or "").strip().lower(),
+            "inspection_confidence": data.get("inspection_confidence", 0.9),
+            "loose_garbage_detected": bool(data.get("loose_garbage_detected", False)),
+            "has_open_request": bool(data.get("has_open_request", False)),
+            "request_id": str(data.get("request_id") or f"BIN-{bin_id}").strip(),
+            "open_request_id": str(data.get("open_request_id") or "").strip() or None,
         }
         update_bin_condition_fields(bin_item)
         bin_state["bins"].append(bin_item)
-
     return jsonify({"status": "ok", "bin": bin_item})
 
 
@@ -588,15 +892,49 @@ def toggle_bin_overflow(bin_id):
         update_bin_condition_fields(bin_item)
         updated_bin = dict(bin_item)
 
-    return jsonify({
-        "status": "ok",
-        "bin": updated_bin,
-        "message": (
-            f"{updated_bin['label']} marked as overflowing."
-            if updated_bin["is_overflowing"]
-            else f"{updated_bin['label']} restored to standard condition."
-        ),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "bin": updated_bin,
+            "message": (
+                f"{updated_bin['label']} marked as overflowing."
+                if updated_bin["is_overflowing"]
+                else f"{updated_bin['label']} restored to standard condition."
+            ),
+        }
+    )
+
+
+@app.route("/bins/<int:bin_id>", methods=["PUT"])
+def update_bin(bin_id):
+    data = request.json or {}
+    with state_lock:
+        bin_item = find_bin_by_id(bin_id)
+        if not bin_item:
+            return jsonify({"status": "error", "message": "Bin not found."}), 404
+        if "address" in data:
+            bin_item["address"] = str(data.get("address") or "").strip() or bin_item["address"]
+        if "label" in data:
+            bin_item["label"] = str(data.get("label") or "").strip() or bin_item["label"]
+        if "last_pickup_at" in data:
+            bin_item["last_pickup_at"] = str(data.get("last_pickup_at") or "").strip()
+        if "request_created_at" in data:
+            bin_item["request_created_at"] = str(data.get("request_created_at") or "").strip() or bin_item["request_created_at"]
+        if "location_importance" in data:
+            bin_item["location_importance"] = str(data.get("location_importance") or "").strip().lower()
+        if "inspection_confidence" in data:
+            bin_item["inspection_confidence"] = data.get("inspection_confidence", bin_item.get("inspection_confidence", 0.9))
+        if "loose_garbage_detected" in data:
+            bin_item["loose_garbage_detected"] = bool(data.get("loose_garbage_detected"))
+        if "has_open_request" in data:
+            bin_item["has_open_request"] = bool(data.get("has_open_request"))
+        if "request_id" in data:
+            bin_item["request_id"] = str(data.get("request_id") or "").strip() or bin_item["request_id"]
+        if "open_request_id" in data:
+            bin_item["open_request_id"] = str(data.get("open_request_id") or "").strip() or None
+        update_bin_condition_fields(bin_item)
+        updated_bin = dict(bin_item)
+    return jsonify({"status": "ok", "bin": updated_bin})
 
 
 @app.route("/zone-summary", methods=["POST"])
@@ -643,20 +981,31 @@ def zone_fly():
         return jsonify({"status": "error", "message": "Zone bounds are invalid."}), 400
 
     center = zone_center(zone)
+    validation = validate_zone_survey_plan(zone)
+    if not validation["allowed"]:
+        next_mission_id()
+        reset_progress_state()
+        set_nav_state("error", validation["error"])
+        set_zone_mission_state(status="error", message=validation.get("details") or validation["error"])
+        return jsonify({"status": "error", "message": validation["error"]}), 409
+
     pending_summary = build_pending_zone_summary(
         zone,
         message="Drone dispatched. Survey is in progress and dispatch summary will appear after full zone coverage.",
     )
     store_zone_summary(pending_summary)
     begin_zone_survey(zone)
-    return jsonify({
-        "status": "ok",
-        "message": (
-            f"Drone dispatched to survey the zone starting near {center['lat']:.5f}, {center['lon']:.5f}."
-        ),
-        "center": center,
-        "summary": pending_summary,
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "message": f"Drone dispatched to survey the zone starting near {center['lat']:.5f}, {center['lon']:.5f}.",
+            "center": center,
+            "summary": pending_summary,
+            "route": validation["route_points"],
+            "warnings": validation.get("warnings", []),
+            "rerouted": validation.get("rerouted", False),
+        }
+    )
 
 
 @app.route("/weather", methods=["GET", "POST"])
@@ -674,8 +1023,8 @@ def weather():
 
     try:
         applied = apply_weather_state(rain, wind, snow)
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Failed to sync weather to AirSim: {e}"}), 500
+    except Exception as exc:
+        return jsonify({"status": "error", "message": f"Failed to sync weather to AirSim: {exc}"}), 500
 
     set_feedback_stage(
         feedback_state["stage"],
@@ -702,6 +1051,8 @@ def speed():
 
 @app.route("/start")
 def start():
+    next_mission_id()
+    reset_progress_state()
     set_nav_state("taking_off", "Sending takeoff command to AirSim.")
     set_zone_mission_state(
         status="idle",
@@ -713,8 +1064,8 @@ def start():
         takeoff()
         set_nav_state("idle", "Takeoff complete.")
         return {"status": "ok", "message": nav_state["message"]}
-    except Exception as e:
-        set_nav_state("error", f"Takeoff failed: {e}")
+    except Exception as exc:
+        set_nav_state("error", f"Takeoff failed: {exc}")
         return jsonify({"status": "error", "message": nav_state["message"]}), 500
 
 
@@ -723,24 +1074,43 @@ def goto():
     data = request.json or {}
     lat = data.get("lat")
     lon = data.get("lon")
-
     if lat is None or lon is None:
         set_nav_state("error", "Missing destination coordinates.")
         return jsonify({"status": "error", "message": nav_state["message"]}), 400
 
     try:
-        set_zone_mission_state(
-            status="idle",
-            message="Manual flight active. Zone survey is not running.",
-            completed_waypoints=0,
-            total_waypoints=0,
-        )
-        begin_navigation(lat, lon)
+        target_point = {"lat": float(lat), "lon": float(lon)}
     except (TypeError, ValueError):
         set_nav_state("error", "Destination coordinates must be numeric.")
         return jsonify({"status": "error", "message": nav_state["message"]}), 400
 
-    return {"status": "ok", "message": nav_state["message"]}
+    set_zone_mission_state(
+        status="idle",
+        message="Manual flight active. Zone survey is not running.",
+        completed_waypoints=0,
+        total_waypoints=0,
+    )
+    validation = prepare_route_validation(current_route_start(), target_point)
+    if not validation["allowed"]:
+        next_mission_id()
+        reset_progress_state()
+        set_nav_state("error", validation["error"])
+        return jsonify({"status": "error", "message": validation["error"]}), 409
+
+    if validation.get("message"):
+        set_nav_state("flying", validation["message"])
+    elif validation.get("warnings"):
+        set_nav_state("flying", validation["warnings"][0])
+    begin_navigation(target_point["lat"], target_point["lon"], route_points=validation["route_points"])
+    return jsonify(
+        {
+            "status": "ok",
+            "message": nav_state["message"],
+            "route": validation["route_points"],
+            "warnings": validation.get("warnings", []),
+            "rerouted": validation.get("rerouted", False),
+        }
+    )
 
 
 if __name__ == "__main__":
