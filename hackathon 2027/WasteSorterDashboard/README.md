@@ -13,7 +13,7 @@ Local web dashboard for the ESP32-S3 smart waste sorter.
 ## Start
 
 ```powershell
-cd "C:\Users\gopin\Downloads\esp32CamCode\hackathon 2027\WasteSorterDashboard"
+cd "C:\Users\gopin\Downloads\Hackthon_Projects\hackathon 2027\WasteSorterDashboard"
 $env:GEMINI_API_KEY="your-key"
 $env:CAMERA_CAPTURE_URL="http://192.168.137.156/capture"
 $env:ESP32_S3_CONTROL_URL="http://192.168.137.108"

@@ -4,6 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import app
 from no_fly_zones import route_intersects_zone, validate_route_plan
 
 
@@ -117,6 +118,35 @@ class NoFlyZoneValidationTests(unittest.TestCase):
         result = validate_route_plan(start, end, active_zones=[])
         self.assertTrue(result["allowed"])
         self.assertFalse(result["rerouted"])
+
+    def test_zone_survey_validation_uses_first_waypoint_not_center(self):
+        original_current_route_start = app.current_route_start
+        original_prepare_route_validation = app.prepare_route_validation
+        calls = []
+
+        def fake_current_route_start():
+            return {"lat": 43.7300, "lon": -79.7630}
+
+        def fake_prepare_route_validation(start_point, destination_point):
+            calls.append(destination_point)
+            return {"allowed": True, "route_points": [start_point, destination_point], "warnings": [], "rerouted": False}
+
+        app.current_route_start = fake_current_route_start
+        app.prepare_route_validation = fake_prepare_route_validation
+        try:
+            zone = {
+                "south": 43.7310,
+                "north": 43.7313,
+                "west": -79.7612,
+                "east": -79.7606,
+            }
+            app.validate_zone_survey_plan(zone)
+        finally:
+            app.current_route_start = original_current_route_start
+            app.prepare_route_validation = original_prepare_route_validation
+
+        expected_first_waypoint = app.generate_zone_scan_waypoints(zone)[0]
+        self.assertEqual(calls[0], expected_first_waypoint)
 
 
 if __name__ == "__main__":

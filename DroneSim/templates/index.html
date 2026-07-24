@@ -42,6 +42,29 @@
       align-items: center;
       gap: 10px;
     }
+    .top-tab-icon {
+      width: 20px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 20px;
+    }
+    .top-tab-icon svg {
+      width: 20px;
+      height: 20px;
+      display: block;
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+    }
+    .truck-tab-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      width: 100%;
+      padding: 18px;
+      overflow-y: auto;
+      background: linear-gradient(180deg, #f6f8fd 0%, #eef2f9 100%);
+    }
     .top-tab-badge {
       min-width: 24px;
       height: 24px;
@@ -88,6 +111,27 @@
       border-radius: 8px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     }
+    .leaflet-popup-content-wrapper {
+      border-radius: 14px;
+      overflow: visible;
+    }
+    .leaflet-popup-content {
+      min-width: 220px;
+      margin: 14px 16px;
+      overflow: visible;
+    }
+    .leaflet-popup-tip-container {
+      overflow: visible;
+    }
+    .leaflet-popup-content button {
+      font-size: 12px;
+      line-height: 1.2;
+      transform: none;
+    }
+    .leaflet-popup-content button:hover,
+    .leaflet-popup-content button:active {
+      transform: none;
+    }
     #panel { width: 380px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); display: flex; flex-direction: column; padding: 20px; gap: 15px; overflow-y: auto; }
     button { width: 100%; padding: 12px; font-size: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: transform 0.2s; }
     button:hover { transform: scale(1.02); }
@@ -97,6 +141,7 @@
     .status-text { font-size: 24px; font-weight: bold; margin-top: 5px; }
     .status-idle { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
     .status-flying { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .status-rerouting { background: linear-gradient(135deg, #f4a261 0%, #e76f51 100%); }
     .status-arrived { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
     .status-error { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
     .status-taking_off { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
@@ -119,6 +164,10 @@
     .mode-dispatch-zone { background: linear-gradient(135deg, #7a8f32 0%, #a4c24d 100%); box-shadow: 0 0 18px rgba(164, 194, 77, 0.28); }
     .mode-no-fly { background: linear-gradient(135deg, #c73b57 0%, #ff6b6b 100%); box-shadow: 0 0 18px rgba(239, 71, 111, 0.32); }
     .mini-button { background: linear-gradient(135deg, #6d72c3 0%, #8352a5 100%); }
+    .mini-button-exit { background: linear-gradient(135deg, #5f6b7a 0%, #3f4a59 100%); }
+    .mini-button-clear { background: linear-gradient(135deg, #d95d39 0%, #e76f51 100%); }
+    .mini-button-finish { background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%); }
+    .mini-button-draft { background: linear-gradient(135deg, #c28b2c 0%, #d9a441 100%); color: #fff7e8; }
     .speed-button.active {
       background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%);
       color: #ffffff;
@@ -127,9 +176,20 @@
     .speed-slider-row { display: grid; grid-template-columns: 34px 1fr 48px; gap: 10px; align-items: center; font-size: 12px; color: #4f5d75; }
     .speed-slider-row input[type="range"] { width: 100%; accent-color: #2a9d8f; }
     .speed-slider-scale { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; color: #7a8699; }
-    .button-content { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
-    .button-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
-    .button-icon svg { width: 22px; height: 22px; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28)); }
+    .button-content { display: inline-grid; grid-template-columns: 30px auto; align-items: center; justify-content: center; column-gap: 10px; }
+    .button-icon {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 4px 10px rgba(0, 0, 0, 0.14);
+      margin-left: 2px;
+    }
+    .button-icon svg { width: 18px; height: 18px; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.24)); }
     .tool-hint { margin-top: 10px; font-size: 12px; line-height: 1.45; color: #52627c; min-height: 34px; }
     .weather-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .weather-card { background: #eef3ff; border-radius: 8px; padding: 10px 8px; text-align: center; }
@@ -155,6 +215,45 @@
     .address-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
     .address-item { padding: 10px 12px; border-radius: 12px; background: white; border: 1px solid #e4e8f4; }
     .address-item-title { font-size: 12px; font-weight: 700; color: #1d3557; margin-bottom: 4px; text-transform: capitalize; }
+    .address-item-title-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .dispatch-bin-icon {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 26px;
+      border-radius: 999px;
+      background: #eef3ff;
+      border: 1px solid #d7e1f2;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 4px 10px rgba(29, 53, 87, 0.1);
+    }
+    .dispatch-bin-icon svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.18));
+    }
+    .overflow-alert-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #ef476f 0%, #ff7f51 100%);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1;
+      box-shadow: 0 6px 14px rgba(239, 71, 111, 0.22);
+    }
     .address-item-copy { font-size: 12px; color: #5d6b86; line-height: 1.4; }
     .address-item-topline {
       display: flex;
@@ -202,6 +301,126 @@
       font-size: 12px;
       line-height: 1.5;
       color: #607089;
+    }
+    .dispatch-run-stamp {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #eef3ff;
+      border: 1px solid #dde5f5;
+      font-size: 12px;
+      color: #55657d;
+      line-height: 1.45;
+    }
+    .dispatch-run-stamp strong {
+      color: #1d3557;
+    }
+    .evidence-wrap {
+      margin-top: 10px;
+      border: 1px solid #dde5f5;
+      border-radius: 14px;
+      background: #f9fbff;
+      overflow: visible;
+    }
+    .evidence-preview {
+      position: relative;
+      padding: 10px 10px 0;
+      display: inline-flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .evidence-thumb {
+      display: block;
+      width: 112px;
+      height: 78px;
+      object-fit: cover;
+      background: #eef3ff;
+      border-radius: 10px;
+      border: 1px solid #d8e2f0;
+      cursor: zoom-in;
+      box-shadow: 0 8px 18px rgba(22, 34, 59, 0.12);
+    }
+    .evidence-thumb-copy {
+      font-size: 12px;
+      line-height: 1.5;
+      color: #607089;
+      max-width: 220px;
+    }
+    .evidence-hover-card {
+      position: absolute;
+      left: 132px;
+      top: 0;
+      width: min(480px, 55vw);
+      padding: 10px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid #d8e2f0;
+      box-shadow: 0 24px 48px rgba(22, 34, 59, 0.18);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(8px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 120;
+    }
+    .evidence-hover-image {
+      display: block;
+      width: 100%;
+      max-height: 320px;
+      object-fit: contain;
+      border-radius: 12px;
+      background: #eef3ff;
+    }
+    .evidence-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 10px 10px 0;
+    }
+    .evidence-footer {
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .evidence-status {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1d3557;
+    }
+    @media (max-width: 1100px) {
+      .evidence-hover-card {
+        left: 0;
+        top: 94px;
+        width: min(360px, calc(100vw - 80px));
+      }
+      .evidence-thumb-copy {
+        max-width: 180px;
+      }
+    }
+    .review-button {
+      width: auto;
+      min-width: 138px;
+      padding: 8px 10px;
+      font-size: 11px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #ef476f 0%, #ff7f51 100%);
+    }
+    .demo-upload-button {
+      width: auto;
+      min-width: 148px;
+      padding: 8px 10px;
+      font-size: 11px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #2d6cdf 0%, #4d96ff 100%);
+    }
+    .dispatch-delete-button {
+      width: auto;
+      min-width: 120px;
+      padding: 8px 10px;
+      font-size: 11px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
     }
     .zone-tool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .zone-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; margin-top: 10px; }
@@ -391,6 +610,320 @@
       line-height: 1.5;
       margin-top: 2px;
     }
+    .truck-tab-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+      gap: 18px;
+      min-height: 0;
+    }
+    .truck-summary-card,
+    .truck-workflow-panel {
+      background: white;
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 16px 36px rgba(22, 34, 59, 0.08);
+      border: 1px solid #e4eaf6;
+    }
+    .truck-workflow-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .truck-workflow-item {
+      border: 1px solid #e2e9f7;
+      background: #fbfcff;
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .truck-workflow-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #1d3557;
+      margin-bottom: 4px;
+    }
+    .truck-workflow-copy {
+      font-size: 12px;
+      line-height: 1.55;
+      color: #607089;
+    }
+    .dispatch-select-bar {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 14px;
+      background: #f7f9ff;
+      border: 1px solid #dde5f5;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dispatch-select-copy {
+      font-size: 12px;
+      color: #5d6b86;
+      line-height: 1.5;
+    }
+    .dispatch-select-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .dispatch-select-grid input {
+      width: 100%;
+      border: 1px solid #d7dfeb;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #24364d;
+      background: #ffffff;
+    }
+    .assign-button {
+      background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%);
+    }
+    .assign-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+      transform: none;
+    }
+    .dispatch-select-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .dispatch-select-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #2a9d8f;
+      margin: 0;
+      flex: 0 0 16px;
+    }
+    .assigned-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 800;
+      background: #eef8f5;
+      color: #1e7a63;
+      border: 1px solid #cdeade;
+    }
+    .truck-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #485b78;
+      background: #eef3ff;
+      border: 1px solid #d7e1f2;
+    }
+    .truck-queue-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .truck-stat {
+      border-radius: 14px;
+      background: #eef3ff;
+      padding: 12px;
+      text-align: center;
+    }
+    .truck-stat strong {
+      display: block;
+      font-size: 20px;
+      color: #1d3557;
+    }
+    .truck-stat span {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #5d6b86;
+    }
+    .truck-batch-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 220px;
+    }
+    .truck-batch-card {
+      border: 1px solid #e4eaf6;
+      border-radius: 18px;
+      background: #ffffff;
+      padding: 16px;
+      box-shadow: 0 12px 28px rgba(22, 34, 59, 0.06);
+    }
+    .truck-batch-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .truck-batch-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #1d3557;
+    }
+    .truck-batch-copy {
+      font-size: 12px;
+      color: #607089;
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+    .truck-item-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .truck-item-card {
+      border-radius: 16px;
+      border: 1px solid #e6ebf7;
+      background: #f9fbff;
+      padding: 14px;
+    }
+    .truck-item-topline {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .truck-item-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #1d3557;
+    }
+    .truck-item-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .truck-step-track {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .truck-step {
+      border-radius: 999px;
+      padding: 8px 6px;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      text-align: center;
+      background: #e9edf5;
+      color: #6b7b92;
+    }
+    .truck-step.completed {
+      background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%);
+      color: #ffffff;
+    }
+    .truck-step.active {
+      background: linear-gradient(135deg, #4d96ff 0%, #667eea 100%);
+      color: #ffffff;
+      box-shadow: 0 8px 16px rgba(77, 150, 255, 0.2);
+    }
+    .truck-item-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .truck-action-button {
+      width: auto;
+      min-width: 148px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+    }
+    .truck-action-advance {
+      background: linear-gradient(135deg, #4d96ff 0%, #667eea 100%);
+    }
+    .truck-action-confirm {
+      background: linear-gradient(135deg, #2a9d8f 0%, #43aa8b 100%);
+    }
+    .truck-action-upload {
+      background: linear-gradient(135deg, #2d6cdf 0%, #4d96ff 100%);
+    }
+    .truck-action-delete {
+      background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    }
+    .truck-action-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      transform: none;
+    }
+    .truck-timestamp-note {
+      font-size: 11px;
+      color: #607089;
+      line-height: 1.5;
+      margin: 6px 0 10px;
+    }
+    .collapsible-evidence {
+      margin-top: 10px;
+      border-radius: 14px;
+      border: 1px solid #dde5f5;
+      background: #f9fbff;
+      overflow: visible;
+      position: relative;
+      z-index: 1;
+    }
+    .collapsible-evidence summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 12px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #41516b;
+      background: #f4f7ff;
+    }
+    .collapsible-evidence summary::-webkit-details-marker {
+      display: none;
+    }
+    .collapsible-evidence-content {
+      padding: 0 0 4px;
+      overflow: visible;
+    }
+    .collapsible-evidence[open] {
+      z-index: 6;
+    }
+    .image-preview-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(17, 24, 39, 0.32);
+      pointer-events: none;
+      z-index: 15000;
+    }
+    .image-preview-overlay.visible {
+      display: flex;
+    }
+    .image-preview-card {
+      width: min(980px, calc(100vw - 56px));
+      max-height: calc(100vh - 56px);
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid #d8e2f0;
+      box-shadow: 0 28px 64px rgba(22, 34, 59, 0.28);
+    }
+    .image-preview-frame {
+      display: block;
+      width: 100%;
+      max-height: calc(100vh - 120px);
+      object-fit: contain;
+      border-radius: 14px;
+      background: #eef3ff;
+    }
     @media (max-width: 1180px) {
       #container {
         grid-template-columns: minmax(0, 1fr);
@@ -399,6 +932,9 @@
         width: 100%;
       }
       .dispatch-tab-grid {
+        grid-template-columns: 1fr;
+      }
+      .truck-tab-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -446,6 +982,22 @@
       letter-spacing: 0.7px;
       margin-bottom: 4px;
     }
+    .no-fly-zone-label {
+      background: rgba(239, 71, 111, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.82);
+      border-radius: 999px;
+      box-shadow: 0 8px 18px rgba(124, 24, 56, 0.22);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      padding: 6px 10px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .no-fly-zone-label::before {
+      display: none;
+    }
     .drone-marker {
       width: 38px;
       height: 38px;
@@ -485,10 +1037,63 @@
 <div id="appShell">
   <div class="top-tabs">
     <button type="button" class="top-tab active" id="tabFlightButton" onclick="showTopTab('flight')">
-      <span class="top-tab-content"><span>Drone - Flight Zone</span></span>
+      <span class="top-tab-content">
+        <span class="top-tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" role="img">
+            <path d="M4 5h16a1 1 0 0 1 1 1v11.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="currentColor" opacity="0.18"></path>
+            <path d="M6 8.2l3.2 2.1 2.2-2.4 2.8 2.2 3.8-3.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path>
+            <circle cx="9.2" cy="10.3" r="1.1" fill="currentColor"></circle>
+            <circle cx="11.4" cy="7.9" r="1.1" fill="currentColor"></circle>
+            <circle cx="14.2" cy="10.1" r="1.1" fill="currentColor"></circle>
+            <circle cx="18" cy="7" r="1.1" fill="currentColor"></circle>
+          </svg>
+        </span>
+        <span>Drone - Flight Zone</span>
+      </span>
     </button>
-    <button type="button" class="top-tab" id="tabDispatchButton" onclick="showTopTab('dispatch')">
-      <span class="top-tab-content"><span>Dispatch Details</span><span class="top-tab-badge" id="dispatchTabBadge">0</span></span>
+    <button type="button" class="top-tab" id="tabSummaryButton" onclick="showTopTab('summary')">
+      <span class="top-tab-content">
+        <span class="top-tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" role="img">
+            <circle cx="6.2" cy="6.2" r="3" fill="currentColor" opacity="0.24"></circle>
+            <circle cx="17.8" cy="6.2" r="3" fill="currentColor" opacity="0.24"></circle>
+            <circle cx="6.2" cy="17.8" r="3" fill="currentColor" opacity="0.24"></circle>
+            <circle cx="17.8" cy="17.8" r="3" fill="currentColor" opacity="0.24"></circle>
+            <circle cx="6.2" cy="6.2" r="1.7" fill="currentColor"></circle>
+            <circle cx="17.8" cy="6.2" r="1.7" fill="currentColor"></circle>
+            <circle cx="6.2" cy="17.8" r="1.7" fill="currentColor"></circle>
+            <circle cx="17.8" cy="17.8" r="1.7" fill="currentColor"></circle>
+            <path d="M8.6 8c1.2 1.5 2.6 2.2 3.4 2.2S14.2 9.5 15.4 8c.9 1 1 2.5.3 4-1 1.9-2.3 3-3.7 3.2v1.6h-1.9v-1.6c-1.4-.2-2.7-1.3-3.7-3.2-.7-1.5-.6-3 .3-4z" fill="currentColor"></path>
+            <circle cx="12" cy="12" r="1.4" fill="#ffffff"></circle>
+          </svg>
+        </span>
+        <span>Flight Summary</span>
+        <span class="top-tab-badge" id="dispatchTabBadge">0</span>
+      </span>
+    </button>
+    <button type="button" class="top-tab" id="tabTruckButton" onclick="showTopTab('truck')">
+      <span class="top-tab-content">
+        <span class="top-tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" role="img">
+            <path d="M3 8.5a1 1 0 0 1 1-1h8.2a1 1 0 0 1 1 1v6.7H3V8.5z" fill="currentColor" opacity="0.2"></path>
+            <path d="M13.2 10h3.4l2.1 2.4v2.8h-5.5V10z" fill="currentColor" opacity="0.3"></path>
+            <path d="M4.3 8.5h7.4v6H3.8v-5.5c0-.3.2-.5.5-.5z" fill="currentColor"></path>
+            <path d="M13.2 10.7h3l1.5 1.8v2h-4.5v-3.8z" fill="currentColor"></path>
+            <circle cx="7.2" cy="16.8" r="1.8" fill="#ffffff"></circle>
+            <circle cx="16.2" cy="16.8" r="1.8" fill="#ffffff"></circle>
+            <circle cx="7.2" cy="16.8" r="1" fill="currentColor"></circle>
+            <circle cx="16.2" cy="16.8" r="1" fill="currentColor"></circle>
+            <g transform="translate(6.2 9.2) scale(0.32)">
+              <path fill="#ffffff" d="M17 13h30l2 8H15z"></path>
+              <path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"></path>
+              <path fill="#2a9d8f" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"></path>
+              <rect x="26" y="10" width="12" height="4" rx="2" fill="#ffffff"></rect>
+            </g>
+          </svg>
+        </span>
+        <span>Truck Dispatch</span>
+        <span class="top-tab-badge" id="truckTabBadge">0</span>
+      </span>
     </button>
   </div>
   <div class="tab-panel active" id="flightTabPanel">
@@ -499,7 +1104,6 @@
       </div>
       <div id="panel">
     <button onclick="promptForAddress()">GO TO ADDRESS</button>
-    <button onclick="startDrone()">TAKEOFF</button>
     <div class="status-card" id="statusCard">
       <div class="status-label">Flight Status</div>
       <div class="status-text">Ready</div>
@@ -512,11 +1116,11 @@
         <button type="button" class="mode-button mode-green" id="modeGreen" onclick="setMapMode('green')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#1f1f1f" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#2a9d8f" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#1f1f1f"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#1f1f1f"/><circle cx="46" cy="47.5" r="2" fill="#7fdad0"/></svg></span><span>Green Bin</span></span></button>
         <button type="button" class="mode-button mode-blue" id="modeBlue" onclick="setMapMode('blue')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#1f1f1f" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#2d6cdf" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#1f1f1f"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#1f1f1f"/><circle cx="46" cy="47.5" r="2" fill="#bcd4ff"/></svg></span><span>Blue Bin</span></span></button>
         <button type="button" class="mode-button mode-garbage" id="modeGarbage" onclick="setMapMode('garbage')"><span class="button-content"><span class="button-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#111111" d="M17 13h30l2 8H15z"/><path fill="#ffffff" d="M21 21h22l3 26a6 6 0 0 1-6 7H24a6 6 0 0 1-6-7z"/><path fill="#656d76" d="M22 22h20l2.5 23a4.5 4.5 0 0 1-4.5 5H24a4.5 4.5 0 0 1-4.5-5z"/><rect x="26" y="10" width="12" height="4" rx="2" fill="#111111"/><path fill="#ffffff" d="M32 28l3.4 5.7H40l-5.5 9.4-3.5-5.8h-4.4z"/><path fill="#ffffff" d="M28.5 38.5l-2.8 4.6h11L32 35.7z"/><circle cx="46" cy="47.5" r="5.5" fill="#111111"/><circle cx="46" cy="47.5" r="2" fill="#d7dce1"/></svg></span><span>Black Bin</span></span></button>
-        <button type="button" class="mode-button mode-dispatch-zone" id="modeZone" onclick="setMapMode('zone')">Define Zone</button>
+        <button type="button" class="mini-button mini-button-clear" onclick="clearAllBins()">Clear All Bins</button>
       </div>
       <div class="mode-grid" style="margin-top: 8px;">
-        <button type="button" class="mini-button" onclick="clearMapMode()">Exit Tool</button>
-        <button type="button" class="mini-button" onclick="clearAllBins()">Clear All Bins</button>
+        <button type="button" class="mode-button mode-dispatch-zone" id="modeZone" onclick="setMapMode('zone')">Define Zone</button>
+        <button type="button" class="mini-button mini-button-exit" onclick="clearMapMode()">Exit Tool</button>
       </div>
       <div class="tool-hint" id="toolHint">Pick a tool, then click the GPS map to place bins or choose a two-corner dispatch zone.</div>
     </div>
@@ -525,15 +1129,11 @@
       <div class="info-section-title">Define No-Fly Zone</div>
       <div class="zone-tool-grid">
         <button type="button" class="mode-button mode-no-fly" id="modeNoFlyPolygon" onclick="setNoFlyMode('polygon')">Polygon Zone</button>
-        <button type="button" class="mini-button" onclick="finishPolygonZone()">Finish Polygon</button>
+        <button type="button" class="mini-button mini-button-finish" onclick="finishPolygonZone()">Finish Polygon</button>
       </div>
       <div class="mode-grid" style="margin-top: 8px;">
-        <button type="button" class="mini-button" onclick="clearNoFlyDrawing()">Clear Draft</button>
-        <div></div>
-      </div>
-      <div class="mode-grid" style="margin-top: 8px;">
-        <button type="button" class="mini-button" onclick="clearMapMode()">Exit Tool</button>
-        <div></div>
+        <button type="button" class="mini-button mini-button-draft" onclick="clearNoFlyDrawing()">Clear Draft</button>
+        <button type="button" class="mini-button mini-button-exit" onclick="clearMapMode()">Exit Tool</button>
       </div>
       <div class="tool-hint" id="noFlyHint">Choose a no-fly-zone shape, click the map to draw it, then name and save it.</div>
       <div class="zone-list" id="noFlyZoneList"></div>
@@ -604,10 +1204,10 @@
   <div class="tab-panel" id="dispatchTabPanel">
     <div class="dispatch-tab-layout">
       <div class="dispatch-tab-header">
-        <div class="dispatch-tab-eyebrow">Dispatch Workflow</div>
-        <div class="dispatch-tab-title">Dispatch Details</div>
+        <div class="dispatch-tab-eyebrow">Flight Summary</div>
+        <div class="dispatch-tab-title">Flight Summary</div>
         <div class="dispatch-tab-copy">
-          Once the drone completes the zone survey, this tab becomes the handoff view for dispatch. It shows the total bins still waiting for pickup, the survey completion state, and the exact addresses collected from the flight.
+          Once the drone completes the zone survey, this tab becomes the operational summary view. It shows the total bins still waiting for pickup, the survey completion state, and the exact addresses collected from the flight.
         </div>
       </div>
       <div class="dispatch-tab-grid">
@@ -619,10 +1219,12 @@
               <div class="dispatch-pill"><strong id="dispatchBlueCount">0</strong><span>Blue</span></div>
               <div class="dispatch-pill"><strong id="dispatchGarbageCount">0</strong><span>Garbage</span></div>
             </div>
-            <div class="info-row"><span class="info-label">Total In Zone</span><span class="info-value" id="dispatchTotalCount">0</span></div>
-            <div class="info-row"><span class="info-label">Survey Progress</span><span class="info-value" id="dispatchSurveyProgress">0 / 0</span></div>
-            <div class="info-row"><span class="info-label">Sort Order</span><span class="info-value">Score desc, time asc</span></div>
-            <div class="tool-hint" id="dispatchMessage">Select a zone to calculate the number of bins and the addresses for dispatch.</div>
+              <div class="info-row"><span class="info-label">Total In Zone</span><span class="info-value" id="dispatchTotalCount">0</span></div>
+              <div class="info-row"><span class="info-label">Survey Progress</span><span class="info-value" id="dispatchSurveyProgress">0 / 0</span></div>
+              <div class="info-row"><span class="info-label">Drone ID</span><span class="info-value" id="dispatchDroneId">DRONE-001</span></div>
+              <div class="dispatch-run-stamp" id="dispatchRunTimestamp"><strong>Survey Run:</strong> Awaiting completed zone survey.</div>
+              <div class="info-row"><span class="info-label">Sort Order</span><span class="info-value">Score desc, time asc</span></div>
+              <div class="tool-hint" id="dispatchMessage">Select a zone to calculate the number of bins and the addresses for dispatch.</div>
             <button type="button" class="mini-button" id="flyZoneButton" onclick="flyToSelectedZone()" disabled>Fly Drone To Zone</button>
             <div class="dispatch-pickup-note" id="dispatchPickupNote">The pickup total appears on the Dispatch Details tab after the survey is fully complete.</div>
             <div class="formula-box" id="dispatchPriorityFormula">
@@ -641,8 +1243,47 @@
       </div>
     </div>
   </div>
-</div>
+  <div class="tab-panel" id="truckTabPanel">
+    <div class="truck-tab-layout">
+      <div class="dispatch-tab-header">
+        <div class="dispatch-tab-eyebrow">Truck Dispatch</div>
+        <div class="dispatch-tab-title">Truck Dispatch</div>
+        <div class="dispatch-tab-copy">
+          This tab is reserved for truck-side dispatch coordination after the drone finishes the survey. It can be used to assign routes, confirm pickups, and track completion against the flight summary.
+        </div>
+      </div>
+      <div class="truck-tab-grid">
+        <div class="truck-summary-card">
+          <div class="info-section-title">Dispatch Queue</div>
+          <div class="truck-queue-stats">
+            <div class="truck-stat"><strong id="truckBatchCount">0</strong><span>Truck Runs</span></div>
+            <div class="truck-stat"><strong id="truckOpenCount">0</strong><span>Open Pickups</span></div>
+          </div>
+          <div class="dispatch-run-stamp" id="truckDispatchSummaryCopy"><strong>Truck workflow:</strong> Assign surveyed bins from Flight Summary to start the pickup route.</div>
+          <div class="formula-box">
+            Truck workflow runs from assignment to pickup closure:
+            ASSIGNED -> EN_ROUTE -> ARRIVED -> PICKED_UP -> API_PENDING_CONFIRMATION -> CLOSED
+          </div>
+        </div>
+        <div class="truck-workflow-panel">
+          <div class="info-section-title">Pickup Workflow</div>
+          <div class="dispatch-empty-state" id="truckDispatchEmptyState">
+            <strong>No truck assignments yet</strong>
+            Select unpicked bins in Flight Summary, assign a truck number and route number, and the pickup workflow will appear here.
+          </div>
+          <div class="truck-batch-list" id="truckDispatchBatchList" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+ </div>
 <div id="celebrationLayer" class="celebration-layer" aria-hidden="true"></div>
+<input id="globalDemoImageInput" type="file" accept="image/*" style="display:none" onchange="handleGlobalDemoImageSelected(this)">
+<div id="imagePreviewOverlay" class="image-preview-overlay" aria-hidden="true">
+  <div class="image-preview-card">
+    <img id="imagePreviewOverlayImg" class="image-preview-frame" alt="Expanded evidence preview">
+  </div>
+</div>
 <div id="noFlyZoneModal" class="modal-backdrop" aria-hidden="true">
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="noFlyZoneModalTitle">
     <div class="modal-title" id="noFlyZoneModalTitle">Save No-Fly Zone</div>
@@ -665,9 +1306,23 @@
     </div>
   </div>
 </div>
+<div id="addressModal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addressModalTitle">
+    <div class="modal-title" id="addressModalTitle">Go To Address</div>
+    <div class="modal-copy">Enter the address you want the drone to fly to.</div>
+    <div class="modal-field">
+      <label for="addressModalInput">Address</label>
+      <input id="addressModalInput" type="text" placeholder="123 Example Street, Brampton, ON">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="mini-button modal-secondary" onclick="cancelAddressModal()">Cancel</button>
+      <button type="button" class="mini-button" onclick="confirmAddressModal()">Go To Address</button>
+    </div>
+  </div>
+</div>
 
 <script>
-  let map = L.map('map').setView([43.7315, -79.7624], 15);
+    let map = L.map('map').setView([43.7315, -79.7624], 15);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
   const droneIcon = L.divIcon({
@@ -719,6 +1374,11 @@
   let celebrationSoundTimer = null;
   let mapAlertTimer = null;
   let pendingNoFlySaveRequest = null;
+  let selectedDispatchEntryIds = new Set();
+  let latestTruckDispatch = { batches: [], open_item_count: 0 };
+  let pendingDemoImageBinId = null;
+  let pendingDemoImageEntryId = null;
+  let latestBinsSnapshot = [];
 
   const binStyles = {
     green: { color: '#2a9d8f', accent: '#7fdad0', label: 'Green Bin' },
@@ -728,10 +1388,14 @@
 
   function showTopTab(tabName) {
     const isFlight = tabName === 'flight';
+    const isSummary = tabName === 'summary';
+    const isTruck = tabName === 'truck';
     document.getElementById('tabFlightButton').classList.toggle('active', isFlight);
-    document.getElementById('tabDispatchButton').classList.toggle('active', !isFlight);
+    document.getElementById('tabSummaryButton').classList.toggle('active', isSummary);
+    document.getElementById('tabTruckButton').classList.toggle('active', isTruck);
     document.getElementById('flightTabPanel').classList.toggle('active', isFlight);
-    document.getElementById('dispatchTabPanel').classList.toggle('active', !isFlight);
+    document.getElementById('dispatchTabPanel').classList.toggle('active', isSummary);
+    document.getElementById('truckTabPanel').classList.toggle('active', isTruck);
     if (isFlight) {
       setTimeout(() => map.invalidateSize(), 60);
       setTimeout(() => map.invalidateSize(), 180);
@@ -864,6 +1528,12 @@
       }
       const layer = createNoFlyLayer(zone).addTo(map);
       layer.bindPopup(popup);
+      layer.bindTooltip('No-Fly Zone', {
+        permanent: true,
+        direction: 'center',
+        className: 'no-fly-zone-label',
+        opacity: zone.is_active ? 0.96 : 0.74
+      });
       noFlyZoneLayers.set(zone.id, layer);
     });
     Array.from(noFlyZoneLayers.keys()).forEach(id => {
@@ -1216,6 +1886,7 @@
   }
 
   function renderBins(binItems) {
+    latestBinsSnapshot = Array.isArray(binItems) ? binItems.map(item => ({ ...item })) : [];
     const seenIds = new Set();
     (binItems || []).forEach(item => {
       seenIds.add(item.id);
@@ -1239,10 +1910,338 @@
     });
   }
 
+  function getTruckStatusLabel(status) {
+    return String(status || 'ASSIGNED').replaceAll('_', ' ');
+  }
+
+  function getTruckStatusTimestamp(item, status) {
+    const normalized = String(status || '').toUpperCase();
+    const timestampMap = {
+      ASSIGNED: item?.assigned_at,
+      EN_ROUTE: item?.en_route_at,
+      ARRIVED: item?.arrived_at,
+      PICKED_UP: item?.picked_up_at,
+      API_PENDING_CONFIRMATION: item?.api_confirmed_at || item?.picked_up_at,
+      CLOSED: item?.closed_at
+    };
+    return timestampMap[normalized] || '';
+  }
+
+  function getTruckTimelineTitle(item) {
+    const lines = [
+      `Assigned: ${formatTimestamp(item?.assigned_at)}`,
+      `En route: ${formatTimestamp(item?.en_route_at)}`,
+      `Arrived: ${formatTimestamp(item?.arrived_at)}`,
+      `Picked up: ${formatTimestamp(item?.picked_up_at)}`,
+      `API confirmed: ${formatTimestamp(item?.api_confirmed_at)}`,
+      `Closed: ${formatTimestamp(item?.closed_at)}`
+    ];
+    return lines.join('\n');
+  }
+
+  function showImagePreview(src, altText = 'Expanded evidence preview') {
+    const overlay = document.getElementById('imagePreviewOverlay');
+    const image = document.getElementById('imagePreviewOverlayImg');
+    if (!overlay || !image || !src) return;
+    image.src = src;
+    image.alt = altText;
+    overlay.classList.add('visible');
+    overlay.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideImagePreview() {
+    const overlay = document.getElementById('imagePreviewOverlay');
+    const image = document.getElementById('imagePreviewOverlayImg');
+    if (!overlay || !image) return;
+    overlay.classList.remove('visible');
+    overlay.setAttribute('aria-hidden', 'true');
+    image.removeAttribute('src');
+  }
+
+  function renderEvidencePreview(image, label, copyText, emptyText = 'No image is attached yet.') {
+    if (!image) {
+      return `<div class="truck-timestamp-note">${escapeHtml(emptyText)}</div>`;
+    }
+    return `
+      <div class="evidence-wrap">
+        <div class="evidence-preview">
+          <img
+            class="evidence-thumb"
+            src="/inspection-images/${image.image_id}/file"
+            alt="Thumbnail preview for ${escapeHtml(label)}"
+            tabindex="0"
+            onmouseenter="showImagePreview(this.src, this.alt)"
+            onmouseleave="hideImagePreview()"
+            onfocus="showImagePreview(this.src, this.alt)"
+            onblur="hideImagePreview()">
+          <div class="evidence-thumb-copy">${escapeHtml(copyText)}</div>
+        </div>
+        <div class="evidence-meta">
+          <span class="meta-pill">Source: ${escapeHtml(image.provider_name || 'simulated')}</span>
+          <span class="meta-pill">Capture: ${escapeHtml(image.capture_status || 'COMPLETED')}</span>
+          <span class="meta-pill">Privacy: ${escapeHtml(image.privacy_processing_status || 'PROCESSED')}</span>
+          <span class="meta-pill">Capture confidence: ${Math.round((Number(image.confidence_score) || 0) * 100)}%</span>
+          ${image.people_detected ? '<span class="meta-pill">People detected</span>' : ''}
+          ${image.faces_detected ? '<span class="meta-pill">Faces detected</span>' : ''}
+          ${image.license_plates_detected ? '<span class="meta-pill">Licence plate detected</span>' : ''}
+          ${image.moving_vehicle_detected ? '<span class="meta-pill">Moving vehicle detected</span>' : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  function getTruckStatusClass(status) {
+    return `priority-${String(status || 'normal').toLowerCase().replaceAll('_pending_confirmation', 'high').replaceAll('api_pending_confirmation', 'medium').replaceAll('closed', 'normal').replaceAll('en_route', 'high').replaceAll('arrived', 'medium').replaceAll('picked_up', 'critical').replaceAll('assigned', 'normal')}`;
+  }
+
+  function syncSelectedDispatchEntries(addresses) {
+    const validIds = new Set(
+      (addresses || [])
+        .filter(item => item?.entry_id && !(item?.truck_assignment && !item.truck_assignment.is_closed))
+        .map(item => Number(item.entry_id))
+    );
+    selectedDispatchEntryIds = new Set([...selectedDispatchEntryIds].filter(entryId => validIds.has(Number(entryId))));
+    const counter = document.getElementById('selectedDispatchCount');
+    const assignButton = document.getElementById('assignTruckDispatchButton');
+    if (counter) counter.innerText = `${selectedDispatchEntryIds.size} selected`;
+    if (assignButton) assignButton.disabled = selectedDispatchEntryIds.size === 0;
+  }
+
+  function toggleDispatchSelection(entryId, checked) {
+    const safeId = Number(entryId);
+    if (!Number.isFinite(safeId)) return;
+    if (checked) selectedDispatchEntryIds.add(safeId);
+    else selectedDispatchEntryIds.delete(safeId);
+    syncSelectedDispatchEntries(Array.from(document.querySelectorAll('[data-dispatch-entry-id]')).map(element => ({ entry_id: Number(element.getAttribute('data-dispatch-entry-id')) })));
+  }
+
+  async function assignSelectedToTruckDispatch() {
+    const truckInput = document.getElementById('truckNumberInput');
+    const routeInput = document.getElementById('routeNumberInput');
+    const truckNumber = truckInput?.value?.trim() || '';
+    const routeNumber = routeInput?.value?.trim() || '';
+    if (!selectedDispatchEntryIds.size) {
+      setMessage('Select at least one unpicked bin from Flight Summary before assigning a truck.', true);
+      return;
+    }
+    if (!truckNumber || !routeNumber) {
+      setMessage('Truck number and route number are both required.', true);
+      return;
+    }
+    try {
+      const data = await fetchJson('/truck-dispatch/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entry_ids: Array.from(selectedDispatchEntryIds),
+          truck_number: truckNumber,
+          route_number: routeNumber
+        })
+      });
+      selectedDispatchEntryIds.clear();
+      truckInput.value = '';
+      routeInput.value = '';
+      latestTruckDispatch = data.truck_dispatch || latestTruckDispatch;
+      updateDispatchSummary(data.dispatch?.last_summary || null, data.dispatch?.mission || null);
+      renderTruckDispatch(latestTruckDispatch);
+      showTopTab('truck');
+      setMessage(data.message || 'Truck dispatch assignment created.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to assign truck dispatch.', true);
+    }
+  }
+
+  async function advanceTruckDispatchItem(itemId) {
+    try {
+      const data = await fetchJson(`/truck-dispatch/items/${itemId}/advance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      latestTruckDispatch = data.truck_dispatch || latestTruckDispatch;
+      updateDispatchSummary(data.dispatch?.last_summary || null, data.dispatch?.mission || null);
+      renderTruckDispatch(latestTruckDispatch);
+      setMessage(data.message || 'Truck workflow advanced.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to advance truck workflow.', true);
+    }
+  }
+
+  async function confirmTruckDispatchApi(itemId) {
+    try {
+      const data = await fetchJson(`/truck-dispatch/items/${itemId}/api-confirmation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation_status: 'CONFIRMED' })
+      });
+      latestTruckDispatch = data.truck_dispatch || latestTruckDispatch;
+      updateDispatchSummary(data.dispatch?.last_summary || null, data.dispatch?.mission || null);
+      renderTruckDispatch(latestTruckDispatch);
+      setMessage(data.message || 'Truck pickup closure confirmed.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to confirm truck closure.', true);
+    }
+  }
+
+  async function deleteTruckDispatchItem(itemId) {
+    try {
+      const data = await fetchJson(`/truck-dispatch/items/${itemId}`, {
+        method: 'DELETE'
+      });
+      latestTruckDispatch = data.truck_dispatch || latestTruckDispatch;
+      updateDispatchSummary(data.dispatch?.last_summary || null, data.dispatch?.mission || null);
+      renderTruckDispatch(latestTruckDispatch);
+      setMessage(data.message || 'Truck dispatch item removed.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to delete truck dispatch item.', true);
+    }
+  }
+
+  function promptTruckClosureImageUpload(itemId) {
+    const input = document.getElementById(`truckClosureInput-${itemId}`);
+    if (input) input.click();
+  }
+
+  async function handleTruckClosureImageSelected(itemId, input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Unable to read the selected closure image.'));
+        reader.readAsDataURL(file);
+      });
+      const data = await fetchJson(`/truck-dispatch/items/${itemId}/api-confirmation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirmation_status: 'CONFIRMED',
+          image_base64: base64,
+          file_name: file.name,
+          mime_type: file.type || 'image/jpeg'
+        })
+      });
+      latestTruckDispatch = data.truck_dispatch || latestTruckDispatch;
+      updateDispatchSummary(data.dispatch?.last_summary || null, data.dispatch?.mission || null);
+      renderTruckDispatch(latestTruckDispatch);
+      setMessage(data.message || 'Truck pickup closure confirmed with image evidence.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to attach truck closure image.', true);
+    } finally {
+      input.value = '';
+    }
+  }
+
+  function renderTruckDispatch(truckDispatch) {
+    latestTruckDispatch = truckDispatch || { batches: [], open_item_count: 0 };
+    const batches = Array.isArray(latestTruckDispatch?.batches) ? latestTruckDispatch.batches : [];
+    const openCount = Number(latestTruckDispatch?.open_item_count || 0);
+    document.getElementById('truckBatchCount').innerText = String(batches.length);
+    document.getElementById('truckOpenCount').innerText = String(openCount);
+    document.getElementById('truckDispatchSummaryCopy').innerHTML = batches.length
+      ? `<strong>Truck workflow:</strong> ${openCount} pickup request(s) remain open across ${batches.length} truck run(s).`
+      : '<strong>Truck workflow:</strong> Assign surveyed bins from Flight Summary to start the pickup route.';
+    updateTruckTabBadge(openCount);
+    const emptyState = document.getElementById('truckDispatchEmptyState');
+    const batchList = document.getElementById('truckDispatchBatchList');
+    batchList.innerHTML = '';
+    if (!batches.length) {
+      emptyState.style.display = 'block';
+      batchList.style.display = 'none';
+      return;
+    }
+    emptyState.style.display = 'none';
+    batchList.style.display = 'flex';
+    batches.forEach(batch => {
+      const batchCard = document.createElement('div');
+      batchCard.className = 'truck-batch-card';
+      const itemsMarkup = (batch.items || []).map(item => {
+        const isOverflowing = String(item.condition || '').toLowerCase() === 'overflowing'
+          || String(item.priority_level || '').toUpperCase() === 'HIGH'
+          || String(item.priority_level || '').toUpperCase() === 'CRITICAL';
+        const labelMarkup = renderDispatchBinLabel(item.label, inferBinTypeFromLabel(item.label), isOverflowing);
+        const stepsMarkup = (item.workflow_steps || []).map(step => `
+          <div class="truck-step ${step.state}" title="${escapeHtml(getTruckStatusTimestamp(item, step.status) ? `${getTruckStatusLabel(step.status)}: ${formatTimestamp(getTruckStatusTimestamp(item, step.status))}` : `${getTruckStatusLabel(step.status)}: waiting`)}">${escapeHtml(getTruckStatusLabel(step.status))}</div>
+        `).join('');
+        const advanceDisabled = item.status === 'API_PENDING_CONFIRMATION' || item.status === 'CLOSED';
+        const confirmDisabled = item.status !== 'API_PENDING_CONFIRMATION';
+        const apiImage = item.api_image || null;
+        const surveyImage = item.survey_image || null;
+        const surveyEvidenceMarkup = renderEvidencePreview(
+          surveyImage,
+          item.label,
+          'Hover over the thumbnail to preview the full survey frontage image captured by the drone.',
+          'No survey frontage image is available for this dispatch item yet.'
+        );
+        const closureEvidenceMarkup = renderEvidencePreview(
+          apiImage,
+          item.label,
+          'Hover over the thumbnail to preview the full truck pickup confirmation image.',
+          'No truck closure image has been attached yet. The API closure step can include a base64 image from the ESP32-CAM module.'
+        );
+        return `
+          <div class="truck-item-card">
+            <div class="truck-item-topline">
+              <div class="truck-item-title">${labelMarkup}</div>
+              <span class="priority-chip ${getTruckStatusClass(item.status)}">${escapeHtml(getTruckStatusLabel(item.status))}</span>
+            </div>
+            <div class="truck-item-meta">
+              <span class="truck-badge" title="${escapeHtml(getTruckTimelineTitle(item))}">Flight #${escapeHtml(item.flight_run_id || item.flight_mission_id || 'pending')}</span>
+              <span class="truck-badge">Bin Request ${escapeHtml(item.request_id || 'pending')}</span>
+              <span class="truck-badge" title="${escapeHtml(getTruckTimelineTitle(item))}">Assigned ${escapeHtml(formatTimestamp(item.assigned_at))}</span>
+              <span class="truck-badge">${escapeHtml(`Condition ${String(item.condition || 'standard').replaceAll('_', ' ')}`)}</span>
+              ${item.api_confirmation_status ? `<span class="truck-badge">API ${escapeHtml(item.api_confirmation_status)}</span>` : ''}
+            </div>
+            <div class="address-item-copy">${escapeHtml(item.address || 'Address pending')}</div>
+            <div class="address-item-copy">${Number(item.lat || 0).toFixed(5)}, ${Number(item.lon || 0).toFixed(5)}</div>
+            <div class="truck-step-track">${stepsMarkup}</div>
+            <details class="collapsible-evidence" open>
+              <summary>Survey Frontage Image</summary>
+              <div class="collapsible-evidence-content">${surveyEvidenceMarkup}</div>
+            </details>
+            <details class="collapsible-evidence">
+              <summary>Truck Closure Image</summary>
+              <div class="collapsible-evidence-content">${closureEvidenceMarkup}</div>
+            </details>
+            <input id="truckClosureInput-${item.item_id}" type="file" accept="image/*" style="display:none" onchange="handleTruckClosureImageSelected(${item.item_id}, this)">
+            <div class="truck-item-actions">
+              <button type="button" class="truck-action-button truck-action-advance" onclick="advanceTruckDispatchItem(${item.item_id})" ${advanceDisabled ? 'disabled' : ''}>Advance To Next Step</button>
+              <button type="button" class="truck-action-button truck-action-upload" onclick="promptTruckClosureImageUpload(${item.item_id})" ${item.status === 'CLOSED' ? 'disabled' : ''}>Upload Closure Image</button>
+              <button type="button" class="truck-action-button truck-action-confirm" onclick="confirmTruckDispatchApi(${item.item_id})" ${confirmDisabled ? 'disabled' : ''}>Receive API Closure</button>
+              <button type="button" class="truck-action-button truck-action-delete" onclick="deleteTruckDispatchItem(${item.item_id})">Delete Item</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      batchCard.innerHTML = `
+        <div class="truck-batch-head">
+          <div>
+            <div class="truck-batch-title">Truck ${escapeHtml(batch.truck_number)} · Route ${escapeHtml(batch.route_number)}</div>
+            <div class="truck-batch-copy">Batch ${batch.batch_id} · Created ${escapeHtml(formatTimestamp(batch.created_at))} · ${batch.open_item_count} pickup(s) still open.</div>
+          </div>
+          <span class="priority-chip ${getTruckStatusClass(batch.status)}">${escapeHtml(getTruckStatusLabel(batch.status))}</span>
+        </div>
+        <div class="truck-item-list">${itemsMarkup}</div>
+      `;
+      batchList.appendChild(batchCard);
+    });
+  }
+
+  function inferBinTypeFromLabel(label) {
+    const lower = String(label || '').toLowerCase();
+    if (lower.includes('green')) return 'green';
+    if (lower.includes('blue')) return 'blue';
+    return 'garbage';
+  }
+
   function updateDispatchSummary(summary, mission = null) {
-    const counts = summary?.counts || { green: 0, blue: 0, garbage: 0 };
-    const totalBins = summary?.total_bins ?? 0;
+    const historyEntries = Array.isArray(summary?.history_entries) ? summary.history_entries : [];
+    const hasHistory = historyEntries.length > 0;
+    const counts = (hasHistory ? summary?.history_counts : summary?.counts) || { green: 0, blue: 0, garbage: 0 };
+    const totalBins = hasHistory ? (summary?.history_total ?? historyEntries.length) : (summary?.total_bins ?? 0);
     const priorityFormula = summary?.priority_formula || 'Priority formula will appear after the survey results are available.';
+    const summaryCapturedAt = summary?.captured_at || '';
+    const summaryDroneId = summary?.drone_id || mission?.drone_id || 'DRONE-001';
     const missionStatus = String(mission?.status || '').toLowerCase();
     const completedWaypoints = mission?.completed_waypoints ?? 0;
     const totalWaypoints = mission?.total_waypoints ?? 0;
@@ -1254,46 +2253,137 @@
     document.getElementById('dispatchBlueCount').innerText = counts.blue ?? 0;
     document.getElementById('dispatchGarbageCount').innerText = counts.garbage ?? 0;
     document.getElementById('dispatchTotalCount').innerText = totalBins;
+    document.getElementById('dispatchDroneId').innerText = summaryDroneId;
     document.getElementById('dispatchMessage').innerText = mission?.message || summary?.dispatch_message || 'Select a zone to calculate the number of bins and the addresses for dispatch.';
     document.getElementById('flyZoneButton').disabled = !selectedZone;
     document.getElementById('dispatchSurveyProgress').innerText = `${completedWaypoints} / ${totalWaypoints}`;
+    document.getElementById('dispatchRunTimestamp').innerHTML = (surveyComplete || hasHistory) && summaryCapturedAt
+      ? `<strong>Survey Run:</strong> ${escapeHtml(formatTimestamp(summaryCapturedAt))}`
+      : '<strong>Survey Run:</strong> Awaiting completed zone survey.';
     document.getElementById('dispatchPriorityFormula').innerText = priorityFormula;
-    document.getElementById('dispatchPickupNote').innerText = surveyComplete
-      ? `${totalBins} bin(s) are awaiting pickup from the completed zone survey.`
-      : 'The pickup total appears on the Dispatch Details tab after the survey is fully complete.';
+    document.getElementById('dispatchPickupNote').innerText = hasHistory
+      ? `${totalBins} saved dispatch entr${totalBins === 1 ? 'y is' : 'ies are'} awaiting pickup or review.`
+      : surveyComplete
+        ? `${totalBins} bin(s) are awaiting pickup from the completed zone survey.`
+        : 'The pickup total appears on the Flight Summary tab after the survey is fully complete.';
     const list = document.getElementById('dispatchAddressList');
     const emptyState = document.getElementById('dispatchEmptyState');
     list.innerHTML = '';
-    const addresses = surveyComplete ? (summary?.addresses || []) : [];
+    const addresses = hasHistory ? historyEntries : (surveyComplete ? (summary?.addresses || []) : []);
+    syncSelectedDispatchEntries(addresses);
     addresses.forEach(item => {
       const card = document.createElement('div');
       card.className = 'address-item';
+      if (item.entry_id) {
+        card.setAttribute('data-dispatch-entry-id', String(item.entry_id));
+      }
       const priorityLevel = String(item.priority || 'NORMAL').toUpperCase();
       const priorityClass = `priority-${priorityLevel.toLowerCase()}`;
       const conditionText = String(item.condition || 'standard').replaceAll('_', ' ');
+      const isOverflowing = String(item.condition || '').toLowerCase() === 'overflowing';
+      const activeTruckAssignment = item.truck_assignment && !item.truck_assignment.is_closed ? item.truck_assignment : null;
       const requestState = item.duplicate_open_request
         ? 'Duplicate open request avoided'
         : item.has_open_request
           ? `Open request ${item.open_request_id || item.request_id || ''}`.trim()
           : `Request ${item.request_id || 'pending'}`;
       const confidencePercent = Math.round((Number(item.inspection_confidence ?? 0.9) || 0.9) * 100);
+      const image = item.latest_image || null;
+      const runTimestamp = item.captured_at || summaryCapturedAt || '';
+      const labelMarkup = renderDispatchBinLabel(item.label, item.bin_type, isOverflowing);
+      const selectionMarkup = item.entry_id ? `
+        <div class="dispatch-select-row">
+          <input type="checkbox" aria-label="Select ${escapeHtml(item.label)} for truck dispatch"
+            ${activeTruckAssignment ? 'disabled' : ''}
+            ${selectedDispatchEntryIds.has(Number(item.entry_id)) ? 'checked' : ''}
+            onchange="toggleDispatchSelection(${item.entry_id}, this.checked)">
+          <span class="dispatch-select-copy">
+            ${activeTruckAssignment
+              ? `Already assigned to Truck ${escapeHtml(activeTruckAssignment.truck_number)} / Route ${escapeHtml(activeTruckAssignment.route_number)}.`
+              : 'Select this unpicked bin to assign a truck route from Flight Summary.'}
+          </span>
+        </div>
+      ` : '';
+      const evidencePreviewMarkup = renderEvidencePreview(
+        image,
+        item.label,
+        'Hover over the thumbnail to preview the full processed evidence image.',
+        'No processed inspection image is attached to this request yet.'
+      );
+      const evidenceActionsMarkup = `
+        <div class="evidence-footer">
+          <div class="evidence-status">${escapeHtml((image && image.review_status) || 'PENDING_REVIEW')}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+            <button type="button" class="demo-upload-button" onclick="promptDemoImageUpload(${item.id}, ${item.entry_id ?? 'null'})">Upload Demo Image</button>
+            ${image ? `<button type="button" class="review-button" onclick="toggleImageManualReview(${image.image_id}, ${image.manual_review_required ? 'false' : 'true'})">
+              ${image.manual_review_required ? 'Clear Manual Review' : 'Flag Manual Review'}
+            </button>` : ''}
+            ${item.entry_id ? `<button type="button" class="dispatch-delete-button" onclick="deleteDispatchEntry(${item.entry_id})">Delete Entry</button>` : ''}
+          </div>
+        </div>
+      `;
+      const evidenceBlock = activeTruckAssignment
+        ? `
+          <details class="collapsible-evidence">
+            <summary>Survey Evidence And Image Details</summary>
+            <div class="collapsible-evidence-content">
+              ${evidencePreviewMarkup}
+              ${evidenceActionsMarkup}
+            </div>
+          </details>
+        `
+        : `
+          <div>
+            ${evidencePreviewMarkup}
+            ${evidenceActionsMarkup}
+          </div>
+        `;
       card.innerHTML = `
         <div class="address-item-topline">
-          <div class="address-item-title">${item.label}</div>
-          <span class="priority-chip ${priorityClass}">${priorityLevel} · ${item.priority_score}</span>
+          <div class="address-item-title">${labelMarkup}</div>
+          <span class="priority-chip ${priorityClass}">${priorityLevel} - ${item.priority_score}</span>
         </div>
         <div class="address-item-copy">${item.address}</div>
         <div class="address-item-copy">${item.lat.toFixed(5)}, ${item.lon.toFixed(5)}</div>
+        ${selectionMarkup}
         <div class="address-item-meta">
           <span class="meta-pill">Condition: ${conditionText}</span>
           <span class="meta-pill">Location: ${String(item.location_importance || 'residential')}</span>
           <span class="meta-pill">Confidence: ${confidencePercent}%</span>
+          ${runTimestamp ? `<span class="meta-pill">Survey run: ${escapeHtml(formatTimestamp(runTimestamp))}</span>` : ''}
+          <span class="meta-pill">Drone: ${escapeHtml(item.drone_id || summaryDroneId)}</span>
+          ${activeTruckAssignment ? `<span class="meta-pill">Truck ${escapeHtml(activeTruckAssignment.truck_number)} · Route ${escapeHtml(activeTruckAssignment.route_number)} · ${escapeHtml(getTruckStatusLabel(activeTruckAssignment.status))}</span>` : ''}
           ${item.loose_garbage_detected ? '<span class="meta-pill">Loose garbage detected</span>' : ''}
           <span class="meta-pill">${requestState}</span>
         </div>
+        ${evidenceBlock}
       `;
       list.appendChild(card);
     });
+    const summaryCard = document.querySelector('.dispatch-summary-card .dispatch-summary');
+    let selectBar = document.getElementById('dispatchSelectBar');
+    if (!selectBar && summaryCard) {
+      selectBar = document.createElement('div');
+      selectBar.className = 'dispatch-select-bar';
+      selectBar.id = 'dispatchSelectBar';
+      selectBar.innerHTML = `
+        <div class="dispatch-select-copy">Select unpicked bins here, assign a truck number and route number, then continue the pickup workflow in the Truck Dispatch tab.</div>
+        <div class="dispatch-select-grid">
+          <input id="truckNumberInput" type="text" placeholder="Truck #">
+          <input id="routeNumberInput" type="text" placeholder="Route #">
+        </div>
+        <div class="address-item-meta" style="justify-content:space-between;align-items:center;">
+          <span class="meta-pill" id="selectedDispatchCount">0 selected</span>
+          <button type="button" class="mini-button assign-button" id="assignTruckDispatchButton" onclick="assignSelectedToTruckDispatch()" disabled>Assign To Truck Dispatch</button>
+        </div>
+      `;
+      const formulaBox = document.getElementById('dispatchPriorityFormula');
+      if (formulaBox) {
+        formulaBox.insertAdjacentElement('beforebegin', selectBar);
+      }
+    }
+    syncSelectedDispatchEntries(addresses);
+    renderTruckDispatch(summary?.truck_dispatch || latestTruckDispatch);
     if (addresses.length) {
       emptyState.style.display = 'none';
       list.style.display = 'flex';
@@ -1302,9 +2392,11 @@
       emptyState.style.display = 'block';
       emptyState.innerHTML = surveyComplete
         ? '<strong>No bins found</strong>The zone survey completed successfully, but no bins are currently waiting in the selected zone.'
+        : hasHistory
+          ? '<strong>No saved entries</strong>Dispatch history is empty right now.'
         : '<strong>Survey pending</strong>Fly the selected zone to collect the verified list of bin locations and addresses for dispatch.';
     }
-    updateDispatchTabBadge(surveyComplete ? totalBins : 0);
+    updateDispatchTabBadge(hasHistory ? totalBins : (surveyComplete ? totalBins : 0));
   }
 
   function updateDispatchTabBadge(count) {
@@ -1313,6 +2405,130 @@
     const safeCount = Math.max(0, Number(count) || 0);
     badge.innerText = String(safeCount);
     badge.classList.toggle('visible', safeCount > 0);
+  }
+
+  function updateTruckTabBadge(count) {
+    const badge = document.getElementById('truckTabBadge');
+    if (!badge) return;
+    const safeCount = Math.max(0, Number(count) || 0);
+    badge.innerText = String(safeCount);
+    badge.classList.toggle('visible', safeCount > 0);
+  }
+
+  function renderDispatchBinLabel(label, binType, isOverflowing) {
+    const safeLabel = escapeHtml(label || 'Bin');
+    const icon = getDispatchBinIconSvg(binType, isOverflowing);
+    return `
+      <span class="address-item-title-row">
+        <span class="dispatch-bin-icon" aria-hidden="true">${icon}</span>
+        <span>${safeLabel}</span>
+        ${isOverflowing ? '<span class="overflow-alert-badge" aria-label="Overflowing bin" title="Overflowing bin">!</span>' : ''}
+      </span>
+    `;
+  }
+
+  function getDispatchBinIconSvg(binType, isOverflowing) {
+    const style = binStyles[binType] || binStyles.garbage;
+    const accent = isOverflowing ? '#ffb703' : style.accent;
+    const glow = isOverflowing ? '#ff7f51' : style.color;
+    return `
+      <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+        <path d="M8 3h8l1 2h3v2H4V5h3l1-2z" fill="#1f1f1f"></path>
+        <path d="M7 8h10l-.8 10.2A2 2 0 0 1 14.2 20H9.8a2 2 0 0 1-1.99-1.8L7 8z" fill="${style.color}"></path>
+        <rect x="9" y="10" width="6" height="7" rx="1.5" fill="#ffffff"></rect>
+        <path d="M12 11.1l.95 1.63h-1.9L12 11.1zm-1.65 2.2h3.3l-1.65 2.86-1.65-2.86zm-1.05.55l.96 1.66h-1.9l.94-1.66zm4.44 0l.95 1.66h-1.9l.95-1.66z" fill="${accent}"></path>
+        <circle cx="18.4" cy="18.2" r="2.1" fill="${glow}"></circle>
+        <path d="M18.4 16.8v2.1" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"></path>
+        <circle cx="18.4" cy="19.7" r="0.8" fill="#ffffff"></circle>
+      </svg>
+    `;
+  }
+
+  function formatTimestamp(value) {
+    if (!value) return 'Unknown';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).format(date);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  async function toggleImageManualReview(imageId, required) {
+    try {
+      const response = await fetchJson(`/inspection-images/${imageId}/manual-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manual_review_required: required })
+      });
+      await refreshDispatchData();
+      setMessage(response.image?.manual_review_required ? 'Image flagged for manual review.' : 'Image cleared from manual review.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to update image review status.', true);
+    }
+  }
+
+  function promptDemoImageUpload(binId, entryId = null) {
+    pendingDemoImageBinId = Number(binId);
+    pendingDemoImageEntryId = entryId == null ? null : Number(entryId);
+    const input = document.getElementById('globalDemoImageInput');
+    if (input) input.click();
+  }
+
+  async function handleGlobalDemoImageSelected(input) {
+    const binId = Number(pendingDemoImageBinId);
+    const file = input?.files?.[0];
+    if (!file || !Number.isFinite(binId)) {
+      if (input) input.value = '';
+      pendingDemoImageBinId = null;
+      return;
+    }
+    const formData = new FormData();
+    formData.append('image', file);
+    if (Number.isFinite(pendingDemoImageEntryId)) {
+      formData.append('entry_id', String(pendingDemoImageEntryId));
+    }
+    try {
+      const response = await fetch(`/bins/${binId}/demo-image`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || `Upload failed with ${response.status}`);
+      }
+      await refreshDispatchData();
+      setMessage(data.message || 'Demo image attached.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to upload demo image.', true);
+    } finally {
+      input.value = '';
+      pendingDemoImageBinId = null;
+      pendingDemoImageEntryId = null;
+    }
+  }
+
+  async function deleteDispatchEntry(entryId) {
+    try {
+      const data = await fetchJson(`/dispatch-entries/${entryId}`, { method: 'DELETE' });
+      updateDispatchSummary(data.dispatch?.last_summary || null, data.dispatch?.mission || null);
+      setMessage(data.deleted?.label ? `${data.deleted.label} removed from dispatch history.` : 'Dispatch entry removed.');
+    } catch (err) {
+      setMessage(err.message || 'Failed to delete dispatch entry.', true);
+    }
   }
 
   function setMapMode(mode) {
@@ -1361,7 +2577,17 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bin_type: binType, lat, lon, address: fallbackAddress, label: style.label })
       });
-      await refreshDispatchData();
+      if (created?.bin) {
+        renderBins([...latestBinsSnapshot, created.bin]);
+      }
+      try {
+        await refreshDispatchData();
+      } catch (refreshErr) {
+        console.error('Dispatch refresh after bin placement failed.', refreshErr);
+        if (created?.bin) {
+          renderBins([...latestBinsSnapshot, created.bin]);
+        }
+      }
       setMessage(`${style.label} placed. Resolving address...`);
       reverseGeocode(lat, lon)
         .then(async address => {
@@ -1370,7 +2596,11 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address })
           });
-          await refreshDispatchData();
+          try {
+            await refreshDispatchData();
+          } catch (refreshErr) {
+            console.error('Dispatch refresh after reverse geocode failed.', refreshErr);
+          }
           setMessage(`${style.label} placed at ${address}`);
         })
         .catch(err => {
@@ -1449,14 +2679,19 @@
     if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lon)) return setMessage('Selected zone does not have valid center coordinates.', true);
     suppressStatusPollingError = true;
     updateTargetMarker(center.lat, center.lon);
-    updateStatus('surveying', 'Surveying Zone...');
-    setMessage('Dispatching drone to survey the selected zone...');
+      updateStatus('flying', 'En Route...');
+      setMessage('Dispatching drone to the selected zone...');
     try {
       const data = await fetchJson('/zone-fly', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(selectedZone)
       });
+      if (data.rerouted) {
+        updateStatus('rerouting', 'Rerouting...');
+      } else {
+        updateStatus('flying', 'En Route...');
+      }
       if (data.summary) {
         selectedZone = data.summary.zone || selectedZone;
         updateDispatchSummary(data.summary, { status: 'in_progress', message: data.summary.dispatch_message, completed_waypoints: 0, total_waypoints: 0 });
@@ -1464,7 +2699,7 @@
       if (data.center) updateTargetMarker(Number(data.center.lat), Number(data.center.lon));
       navigationStartTime = Date.now();
       navigationStartDistance = 0;
-      setMessage(data.message || 'Drone dispatched to survey the zone.');
+      setMessage(data.message || (data.rerouted ? 'Drone is rerouting to the selected zone.' : 'Drone is en route to the selected zone.'));
       if (Array.isArray(data.warnings) && data.warnings.length) {
         showMapAlert(data.warnings[0], 'warning');
       } else if (data.rerouted) {
@@ -1586,9 +2821,29 @@
     }
   }
 
-  async function submitAddress() {
-    const address = window.prompt('Enter the address to send the drone to:');
-    if (!address) return;
+  function openAddressModal(defaultAddress = '') {
+    const modal = document.getElementById('addressModal');
+    const input = document.getElementById('addressModalInput');
+    if (!modal || !input) return;
+    input.value = defaultAddress;
+    modal.classList.add('visible');
+    modal.setAttribute('aria-hidden', 'false');
+    setTimeout(() => input.focus(), 0);
+  }
+
+  function cancelAddressModal() {
+    const modal = document.getElementById('addressModal');
+    if (!modal) return;
+    modal.classList.remove('visible');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  async function submitAddress(addressValue = '') {
+    const address = String(addressValue || '').trim();
+    if (!address) {
+      setMessage('Enter an address before starting the lookup.', true);
+      return;
+    }
     updateStatus('flying', 'Searching...');
     setMessage(`Looking up "${address}"...`);
     try {
@@ -1600,6 +2855,7 @@
       const lat = Number(match.lat);
       const lon = Number(match.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('Address lookup returned invalid coordinates.');
+      cancelAddressModal();
       map.setView([lat, lon], 16);
       await sendDroneToDestination(lat, lon, 'address');
     } catch (err) {
@@ -1608,7 +2864,12 @@
     }
   }
 
-  function promptForAddress() { submitAddress(); }
+  function confirmAddressModal() {
+    const input = document.getElementById('addressModalInput');
+    submitAddress(input ? input.value : '');
+  }
+
+  function promptForAddress() { openAddressModal(''); }
 
   async function fetchJson(url, options) {
     const response = await fetch(url, options);
@@ -1683,7 +2944,7 @@
   }
 
   function getStatusMessage(status) {
-    const messages = { idle: 'Ready to Fly', flying: 'Navigating...', surveying: 'Surveying Zone...', taking_off: 'Taking Off...', arrived: 'Arrived!', error: 'Navigation Error' };
+    const messages = { idle: 'Ready to Fly', flying: 'En Route...', rerouting: 'Rerouting...', surveying: 'Surveying Zone...', taking_off: 'Taking Off...', arrived: 'Arrived!', error: 'Navigation Error' };
     return messages[status] || status;
   }
 
@@ -1702,7 +2963,7 @@
         updateFeedbackLoop(data.feedback, data.weather);
         if (data.demo) updateSpeedControls(data.demo.speed_multiplier);
         if (data.no_fly_zones) renderNoFlyZones(data.no_fly_zones);
-        if (data.flight_plan?.warnings?.length && (data.status === 'flying' || data.status === 'surveying')) {
+        if (data.flight_plan?.warnings?.length && (data.status === 'flying' || data.status === 'rerouting' || data.status === 'surveying')) {
           setMessage(data.flight_plan.warnings[0]);
           showMapAlert(data.flight_plan.warnings[0], 'warning');
         }
@@ -1725,7 +2986,7 @@
         document.getElementById('curLat').innerText = data.lat.toFixed(4);
         document.getElementById('curLon').innerText = data.lon.toFixed(4);
         document.getElementById('curAlt').innerText = Math.abs(data.z).toFixed(1) + 'm';
-        if ((data.status === 'flying' || data.status === 'surveying') && data.distance_to_goal !== undefined) {
+        if ((data.status === 'flying' || data.status === 'rerouting' || data.status === 'surveying') && data.distance_to_goal !== undefined) {
           document.getElementById('progressSection').style.display = 'block';
           const distance = data.distance_to_goal || 0;
           const distanceKm = distance / 1000;

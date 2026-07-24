@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#edf2f7" />
+  <image href="data:image/jpeg;base64,ZmFrZSBlc3AzMiBpbWFnZSBieXRlcw==" x="0" y="0" width="960" height="430" preserveAspectRatio="xMidYMid slice" />
+  <rect x="650" y="250" width="122" height="124" rx="16" fill="#ffffff" opacity="0.94" stroke="#1f2937" stroke-width="3" />
+  <rect x="664" y="268" width="92" height="90" rx="14" fill="#2d6cdf" />
+  <rect x="686" y="248" width="48" height="14" rx="5" fill="#111827" />
+  <text x="710" y="317" font-size="28" font-weight="700" text-anchor="middle" fill="#ffffff">#3</text>
+  <text x="710" y="343" font-size="14" text-anchor="middle" fill="#ffffff">Overflowing</text>
+  <rect x="28" y="24" width="280" height="58" rx="14" fill="#ffffff" opacity="0.92" />
+  <text x="48" y="60" font-size="24" font-weight="700" fill="#1d3557">3 Route St</text>
+  <rect x="0" y="430" width="960" height="110" fill="#ffffff" opacity="0.94" />
+  <text x="28" y="470" font-size="28" font-weight="700" fill="#1d3557">Blue Bin</text>
+  <text x="28" y="500" font-size="16" fill="#52627c">3 Route St</text>
+  <text x="28" y="524" font-size="14" fill="#7a8699">Condition: Overflowing • Local demo override image</text>
+</svg>

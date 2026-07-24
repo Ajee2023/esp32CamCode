@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#edf2f7" />
+  <rect x="70" y="90" width="820" height="360" rx="24" fill="#ffffff" stroke="#d8e2ec" stroke-width="4" />
+  <text x="120" y="180" font-size="40" font-weight="700" fill="#1d3557">Placeholder Evidence Image</text>
+  <text x="120" y="238" font-size="22" fill="#52627c">69, Sandyshores Drive, Brampton, Peel Region, Golden Horseshoe, Ontario, L6R 2S0, Canada</text>
+  <text x="120" y="288" font-size="18" fill="#7a8699">Automated capture was unavailable. Placeholder evidence retained for workflow continuity.</text>
+  <text x="120" y="336" font-size="18" fill="#7a8699">Bin: Blue Bin</text>
+</svg>
