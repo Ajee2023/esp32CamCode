@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Camera Check</title>
+    <style>
+      body { margin: 0; min-height: 100vh; background: #eef4ef; color: #17211a; font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
+      main { width: min(980px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0; }
+      h1 { margin: 0 0 12px; font-size: 30px; }
+      .bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+      button, select, a { min-height: 40px; border: 1px solid #d9e4db; border-radius: 8px; background: white; color: #146239; font-weight: 800; padding: 0 14px; text-decoration: none; }
+      button { cursor: pointer; background: #e7f2ea; }
+      video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; background: #0b1710; object-fit: contain; }
+      pre { min-height: 180px; margin: 16px 0 0; padding: 14px; border: 1px solid #d9e4db; border-radius: 8px; background: white; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Camera Check</h1>
+      <div class="bar">
+        <button id="startButton" type="button">Start Camera</button>
+        <button id="stopButton" type="button">Stop Camera</button>
+        <select id="cameraSelect"><option value="">Auto-detect camera</option></select>
+        <a href="/">Back to sorter</a>
+      </div>
+      <video id="video" autoplay playsinline muted></video>
+      <pre id="log">Ready. Click Start Camera.</pre>
+    </main>
+    <script>
+      const startButton = document.querySelector("#startButton");
+      const stopButton = document.querySelector("#stopButton");
+      const cameraSelect = document.querySelector("#cameraSelect");
+      const video = document.querySelector("#video");
+      const log = document.querySelector("#log");
+      let stream = null;
+
+      function write(message) {
+        log.textContent += "\n" + message;
+      }
+
+      function reset(message) {
+        log.textContent = message;
+      }
+
+      function stopCamera() {
+        if (stream) {
+          for (const track of stream.getTracks()) track.stop();
+        }
+        stream = null;
+        video.srcObject = null;
+        write("Stopped camera stream.");
+      }
+
+      async function refreshDevices() {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter(device => device.kind === "videoinput");
+        cameraSelect.innerHTML = '<option value="">Auto-detect camera</option>' + cameras.map((device, index) => {
+          const selected = device.deviceId === cameraSelect.value ? " selected" : "";
+          return `<option value="${device.deviceId}"${selected}>${device.label || `Camera ${index + 1}`}</option>`;
+        }).join("");
+        write(`Detected ${cameras.length} video input(s).`);
+        for (const [index, camera] of cameras.entries()) {
+          write(`${index + 1}. ${camera.label || "Unlabeled camera"} ${camera.deviceId ? "[has deviceId]" : "[no deviceId]"}`);
+        }
+        return cameras;
+      }
+
+      async function startCamera() {
+        reset("Starting camera check...");
+        try {
+          if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error("navigator.mediaDevices.getUserMedia is unavailable in this browser context.");
+          }
+
+          let permission = "unknown";
+          if (navigator.permissions?.query) {
+            try {
+              const status = await Promise.race([
+                navigator.permissions.query({ name: "camera" }),
+                new Promise(resolve => setTimeout(() => resolve(null), 800))
+              ]);
+              permission = status?.state || "unknown";
+            } catch (error) {
+              permission = `query failed: ${error.name || error.message}`;
+            }
+          }
+          write(`Chrome permission state: ${permission}`);
+
+          const cameras = await refreshDevices();
+          const selectedId = cameraSelect.value;
+          const constraints = selectedId
+            ? { video: { deviceId: { exact: selectedId } }, audio: false }
+            : { video: true, audio: false };
+          write(`Calling getUserMedia with ${selectedId ? "selected camera" : "default camera"}...`);
+
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = stream;
+          await video.play();
+          const track = stream.getVideoTracks()[0];
+          write(`Opened: ${track?.label || "camera"}`);
+          write(`Settings: ${JSON.stringify(track?.getSettings?.() || {}, null, 2)}`);
+          await refreshDevices();
+        } catch (error) {
+          write(`ERROR ${error.name || "Error"}: ${error.message || error}`);
+        }
+      }
+
+      startButton.addEventListener("click", startCamera);
+      stopButton.addEventListener("click", stopCamera);
+      cameraSelect.addEventListener("change", startCamera);
+      refreshDevices().catch(error => write(`Initial device list failed: ${error.name || "Error"}: ${error.message || error}`));
+    </script>
+  </body>
+</html>

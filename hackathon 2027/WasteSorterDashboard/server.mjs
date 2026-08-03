@@ -1,26 +1,48 @@
 import express from "express";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const classificationDb = new DatabaseSync(path.join(__dirname, "classification-summary.sqlite"));
 
 loadEnvFile(path.join(__dirname, ".env"));
+initClassificationDb();
 
 const app = express();
 const PORT = Number(process.env.PORT || 3400);
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_API_KEY";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
-const CAMERA_CAPTURE_URL = process.env.CAMERA_CAPTURE_URL || "http://192.168.137.156/capture";
-const ESP32_S3_CONTROL_URL = process.env.ESP32_S3_CONTROL_URL || "http://192.168.137.108";
+const CAMERA_SOURCE = process.env.CAMERA_SOURCE || "browser";
+const CAMERA_CAPTURE_URL = process.env.CAMERA_CAPTURE_URL || "http://192.168.137.9/capture";
+const CAMERA_LABEL = CAMERA_SOURCE === "browser" ? "Laptop HD Camera" : "ESP32-CAM";
+const SUPPORTED_UPLOAD_TYPES = new Set(["image/jpeg", "image/png"]);
+const ESP32_S3_CONTROL_URL = process.env.ESP32_S3_CONTROL_URL || "http://192.168.137.154";
+const WHEEL_NUDGE_MS = clampInt(process.env.WHEEL_NUDGE_MS, 60, 60, 1000);
+const WHEEL_SPEED = clampInt(process.env.WHEEL_SPEED, 170, 80, 255);
+const WHEEL_BLUE_NUDGES = clampInt(process.env.WHEEL_BLUE_NUDGES, 7, 1, 40);
+const WHEEL_GREEN_NUDGES = clampInt(process.env.WHEEL_GREEN_NUDGES, 5, 1, 40);
+const WHEEL_BLUE_HOME_NUDGES = clampInt(process.env.WHEEL_BLUE_HOME_NUDGES, 5, 1, 40);
+const WHEEL_GREEN_HOME_NUDGES = clampNumber(process.env.WHEEL_GREEN_HOME_NUDGES, 6.5, 1, 40);
+const WHEEL_PARTIAL_NUDGE_MIN_MS = 30;
+const WHEEL_PAUSE_MS = clampInt(process.env.WHEEL_PAUSE_MS, 150, 50, 1000);
+const WHEEL_LEFT_DIRECTION = String(process.env.WHEEL_LEFT_DIRECTION || "reverse").toLowerCase() === "forward" ? "forward" : "reverse";
+const WHEEL_RIGHT_DIRECTION = String(process.env.WHEEL_RIGHT_DIRECTION || "forward").toLowerCase() === "reverse" ? "reverse" : "forward";
 
 const GEMINI_PROMPT =
-  "Classify the waste item in this image for a smart trash sorter. " +
-  "Choose exactly one category: Garbage, Recycle, Organic. " +
-  "Return only JSON with a category field.";
+  "Classify the main visible waste item in this image for a smart trash sorter. " +
+  "You must choose exactly one category from: Garbage, Recycle, Organic. " +
+  "Never answer Unknown, Other, or Unsure; choose the closest category when uncertain. " +
+  "Return only JSON with category, confidenceLevel, confidenceScore, and rationale fields. " +
+  "confidenceLevel must be High, Medium, or Low. confidenceScore must be a number from 0 to 100. " +
+  "For common plastic, metal, paper, cardboard, or glass packaging choose Recycle. " +
+  "For food scraps or compostable plant matter choose Organic. " +
+  "For dirty mixed waste or items not accepted by recycling/compost choose Garbage. " +
+  "Keep rationale under 140 characters.";
 
 const progressClients = new Set();
 let latestRun = {
@@ -32,20 +54,86 @@ let latestRun = {
   message: "Ready"
 };
 
-app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json({ limit: "8mb" }));
+app.use(express.static(path.join(__dirname, "public"), {
+  etag: false,
+  lastModified: false,
+  maxAge: 0,
+  setHeaders(res) {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+  }
+}));
 
 app.get("/api/config", (_req, res) => {
   res.json({
+    cameraMode: CAMERA_SOURCE,
+    cameraLabel: CAMERA_LABEL,
+    browserCameraEnabled: CAMERA_SOURCE === "browser",
+    legacyCameraCaptureUrl: CAMERA_CAPTURE_URL,
     cameraCaptureUrl: CAMERA_CAPTURE_URL,
     esp32S3ControlUrl: ESP32_S3_CONTROL_URL,
     geminiModel: GEMINI_MODEL,
-    hasGeminiKey: GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY"
+    hasGeminiKey: GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY",
+    sorter: {
+      home: "Garbage",
+      recycle: "Blue Left",
+      organic: "Green Right",
+      nudgeMs: WHEEL_NUDGE_MS,
+      speed: WHEEL_SPEED,
+      blueNudges: WHEEL_BLUE_NUDGES,
+      blueHomeNudges: WHEEL_BLUE_HOME_NUDGES,
+      greenNudges: WHEEL_GREEN_NUDGES,
+      greenHomeNudges: WHEEL_GREEN_HOME_NUDGES,
+      leftDirection: WHEEL_LEFT_DIRECTION,
+      rightDirection: WHEEL_RIGHT_DIRECTION
+    }
   });
 });
 
 app.get("/api/latest", (_req, res) => {
   res.json(latestRun);
+});
+app.get("/api/classifications", (_req, res) => {
+  res.json({ ok: true, entries: listClassificationRecords() });
+});
+
+app.patch("/api/classifications/:id", (req, res) => {
+  try {
+    const entry = updateClassificationRecord(req.params.id, req.body || {});
+    res.json({ ok: true, entry });
+  } catch (error) {
+    const status = error.code === "NOT_FOUND" ? 404 : 400;
+    res.status(status).json({ ok: false, error: error.message || String(error) });
+  }
+});
+
+app.put("/api/classifications/:id", (req, res) => {
+  try {
+    const entry = updateClassificationRecord(req.params.id, req.body || {});
+    res.json({ ok: true, entry });
+  } catch (error) {
+    const status = error.code === "NOT_FOUND" ? 404 : 400;
+    res.status(status).json({ ok: false, error: error.message || String(error) });
+  }
+});
+
+app.delete("/api/classifications/:id", (req, res) => {
+  try {
+    deleteClassificationRecord(req.params.id);
+    res.json({ ok: true });
+  } catch (error) {
+    const status = error.code === "NOT_FOUND" ? 404 : 400;
+    res.status(status).json({ ok: false, error: error.message || String(error) });
+  }
+});
+
+app.get("/api/telemetry", async (_req, res) => {
+  try {
+    const telemetry = await getEsp32Telemetry();
+    res.json({ ok: true, ...telemetry });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || String(error) });
+  }
 });
 
 app.get("/api/events", (req, res) => {
@@ -62,12 +150,89 @@ app.get("/api/events", (req, res) => {
   });
 });
 
+app.post("/api/classify-upload", async (req, res) => {
+  const runId = `run-${Date.now()}`;
+  latestRun = {
+    id: runId,
+    status: "running",
+    category: null,
+    confidenceLevel: null,
+    confidenceScore: null,
+    rationale: null,
+    summaryEntry: null,
+    imageDataUrl: null,
+    steps: [],
+    message: "Starting"
+  };
+
+  broadcast("snapshot", latestRun);
+
+  try {
+    await setProgress("Preparing", "Laptop Camera", "Starting classification flow");
+    await tryUpdateLcd("Preparing", "Laptop Camera");
+
+    await setProgress("Capturing", "Laptop Camera", "Receiving browser camera frame");
+    await tryUpdateLcd("Capturing", "Laptop Camera");
+
+    const image = parseUploadedImage(req.body);
+    const sorterSettings = normalizeSorterSettings(req.body?.sorterSettings);
+    latestRun.imageDataUrl = `data:${image.mime};base64,${image.base64}`;
+    broadcast("snapshot", latestRun);
+
+    await setProgress("Captured", `${image.bytes} bytes`, "Frame received from laptop camera");
+    await setProgress("Classifying", "Gemini AI", "Sending image to Gemini");
+    await tryUpdateLcd("Classifying", "Gemini AI");
+
+    const classification = await classifyImage(image.base64, image.mime);
+    const category = classification.category;
+    latestRun.category = category;
+    latestRun.confidenceLevel = classification.confidenceLevel;
+    latestRun.confidenceScore = classification.confidenceScore;
+    latestRun.rationale = classification.rationale;
+    latestRun.message = `Classified as ${category}`;
+    latestRun.summaryEntry = createClassificationRecord({
+      aiModel: GEMINI_MODEL,
+      classification: category,
+      imageDataUrl: latestRun.imageDataUrl,
+      confidenceLevel: classification.confidenceLevel,
+      confidenceScore: classification.confidenceScore,
+      rationale: classification.rationale
+    });
+
+    await setProgress("Classified", `${category} ${formatConfidenceSummary(classification)}`, classification.rationale || `Gemini classified the item as ${category}`);
+    await tryUpdateLcd("AI RESULT", category);
+
+    await sortAndOpenForCategory(category, sorterSettings);
+
+    latestRun.status = "complete";
+    latestRun.message = `Classified as ${category}; sorted and returned home`;
+    await setProgress("Complete", category, "Classification complete, lid closed, wheel returned home");
+    await tryUpdateLcd("Ready", "Garbage Home");
+    broadcast("snapshot", latestRun);
+
+    res.json({
+      ok: true,
+      category,
+      run: latestRun
+    });
+  } catch (error) {
+    latestRun.status = "error";
+    latestRun.message = error.message || String(error);
+    await tryUpdateLcd("Test failed", safeLcdText(latestRun.message));
+    broadcast("snapshot", latestRun);
+    res.status(500).json({ ok: false, error: latestRun.message, run: latestRun });
+  }
+});
 app.post("/api/run-classification", async (_req, res) => {
   const runId = `run-${Date.now()}`;
   latestRun = {
     id: runId,
     status: "running",
     category: null,
+    confidenceLevel: null,
+    confidenceScore: null,
+    rationale: null,
+    summaryEntry: null,
     imageDataUrl: null,
     steps: [],
     message: "Starting"
@@ -86,13 +251,31 @@ app.post("/api/run-classification", async (_req, res) => {
     await setProgress("Classifying", "Gemini AI", "Sending image to Gemini");
     await tryUpdateLcd("Classifying", "Gemini AI");
 
-    const category = await classifyImage(image.base64);
+    const classification = await classifyImage(image.base64, image.mime);
+    const category = classification.category;
     latestRun.category = category;
-    latestRun.status = "complete";
+    latestRun.confidenceLevel = classification.confidenceLevel;
+    latestRun.confidenceScore = classification.confidenceScore;
+    latestRun.rationale = classification.rationale;
     latestRun.message = `Classified as ${category}`;
+    latestRun.summaryEntry = createClassificationRecord({
+      aiModel: GEMINI_MODEL,
+      classification: category,
+      imageDataUrl: latestRun.imageDataUrl,
+      confidenceLevel: classification.confidenceLevel,
+      confidenceScore: classification.confidenceScore,
+      rationale: classification.rationale
+    });
 
-    await setProgress("Complete", category, `Gemini classified the item as ${category}`);
+    await setProgress("Classified", `${category} ${formatConfidenceSummary(classification)}`, classification.rationale || `Gemini classified the item as ${category}`);
     await tryUpdateLcd("AI RESULT", category);
+
+    await sortAndOpenForCategory(category);
+
+    latestRun.status = "complete";
+    latestRun.message = `Classified as ${category}; sorted and returned home`;
+    await setProgress("Complete", category, "Classification complete, lid closed, wheel returned home");
+    await tryUpdateLcd("Ready", "Garbage Home");
     broadcast("snapshot", latestRun);
 
     res.json({
@@ -116,12 +299,42 @@ app.post("/api/lcd", async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/future/motor", (_req, res) => {
-  res.status(423).json({
-    ok: false,
-    message: "Motor control is intentionally locked in the web dashboard until mechanical calibration is complete."
-  });
-});
+app.post("/api/motor", handleMotorRequest);
+app.post("/api/future/motor", handleMotorRequest);
+app.post("/api/motor-raw", handleRawMotorRequest);
+
+async function handleRawMotorRequest(req, res) {
+  try {
+    const result = await rotateMotorRaw(req.body || {});
+    res.json({ ok: true, message: "Raw wheel command complete", esp32: result });
+  } catch (error) {
+    await tryUpdateLcd("Raw failed", safeLcdText(error.message));
+    res.status(500).json({ ok: false, error: error.message || String(error) });
+  }
+}
+
+async function handleMotorRequest(req, res) {
+  const body = req.body || {};
+  const direction = String(body.direction || "").toLowerCase();
+
+  try {
+    if (direction === "stop") {
+      const result = await rotateMotor({ ...body, direction: "stop", ms: 100, speed: 0 });
+      await tryUpdateLcd("Wheel", "Stopped");
+      res.json({ ok: true, message: "Wheel motor stopped", esp32: result });
+      return;
+    }
+
+    const ms = clampInt(body.ms, 800, 100, 5000);
+    const speed = clampInt(body.speed, 255, 0, 255);
+    await tryUpdateLcd("Wheel", "Starting");
+    const result = await rotateMotor({ ...body, ms, speed });
+    res.json({ ok: true, message: "Wheel motor command sent", ms, speed, esp32: result });
+  } catch (error) {
+    await tryUpdateLcd("Wheel failed", safeLcdText(error.message));
+    res.status(500).json({ ok: false, error: error.message || String(error) });
+  }
+}
 
 app.post("/api/lid", async (_req, res) => {
   try {
@@ -132,6 +345,192 @@ app.post("/api/lid", async (_req, res) => {
   }
 });
 
+function initClassificationDb() {
+  classificationDb.exec(`
+    CREATE TABLE IF NOT EXISTS classifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      ai_model TEXT NOT NULL,
+      classification TEXT NOT NULL,
+      image_data_url TEXT,
+      confidence_level TEXT,
+      confidence_score REAL,
+      rationale TEXT
+    )
+  `);
+}
+
+function listClassificationRecords() {
+  return classificationDb
+    .prepare(`
+      SELECT id, created_at, updated_at, ai_model, classification, image_data_url, confidence_level, confidence_score, rationale
+      FROM classifications
+      ORDER BY datetime(created_at) DESC, id DESC
+    `)
+    .all()
+    .map(classificationRowToJson);
+}
+
+function getClassificationRecord(id) {
+  const entryId = normalizeEntryId(id);
+  const row = classificationDb
+    .prepare(`
+      SELECT id, created_at, updated_at, ai_model, classification, image_data_url, confidence_level, confidence_score, rationale
+      FROM classifications
+      WHERE id = ?
+    `)
+    .get(entryId);
+  return row ? classificationRowToJson(row) : null;
+}
+
+function createClassificationRecord(data) {
+  const result = classificationDb
+    .prepare(`
+      INSERT INTO classifications (created_at, ai_model, classification, image_data_url, confidence_level, confidence_score, rationale)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+    .run(
+      new Date().toISOString(),
+      String(data.aiModel || GEMINI_MODEL),
+      normalizeCategory(data.classification),
+      String(data.imageDataUrl || ""),
+      normalizeConfidenceLevel(data.confidenceLevel, data.confidenceScore),
+      normalizeConfidenceScore(data.confidenceScore),
+      normalizeRationale(data.rationale)
+    );
+
+  return getClassificationRecord(result.lastInsertRowid);
+}
+
+function updateClassificationRecord(id, body) {
+  const entryId = normalizeEntryId(id);
+  const current = getClassificationRecord(entryId);
+  if (!current) {
+    const error = new Error("Classification entry not found");
+    error.code = "NOT_FOUND";
+    throw error;
+  }
+
+  const nextClassification = body.classification === undefined
+    ? current.classification
+    : normalizeCategory(body.classification);
+  const nextScore = body.confidenceScore === undefined
+    ? current.confidenceScore
+    : normalizeConfidenceScore(body.confidenceScore);
+  const nextLevel = body.confidenceLevel === undefined
+    ? current.confidenceLevel
+    : normalizeConfidenceLevel(body.confidenceLevel, nextScore);
+  const nextRationale = body.rationale === undefined
+    ? current.rationale
+    : normalizeRationale(body.rationale);
+
+  classificationDb
+    .prepare(`
+      UPDATE classifications
+      SET updated_at = ?, classification = ?, confidence_level = ?, confidence_score = ?, rationale = ?
+      WHERE id = ?
+    `)
+    .run(new Date().toISOString(), nextClassification, nextLevel, nextScore, nextRationale, entryId);
+
+  return getClassificationRecord(entryId);
+}
+
+function deleteClassificationRecord(id) {
+  const entryId = normalizeEntryId(id);
+  const result = classificationDb.prepare("DELETE FROM classifications WHERE id = ?").run(entryId);
+  if (!result.changes) {
+    const error = new Error("Classification entry not found");
+    error.code = "NOT_FOUND";
+    throw error;
+  }
+}
+
+function classificationRowToJson(row) {
+  return {
+    id: Number(row.id),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    aiModel: row.ai_model,
+    classification: row.classification,
+    imageDataUrl: row.image_data_url,
+    confidenceLevel: row.confidence_level,
+    confidenceScore: row.confidence_score === null || row.confidence_score === undefined ? null : Number(row.confidence_score),
+    rationale: row.rationale || ""
+  };
+}
+
+function normalizeEntryId(value) {
+  const id = Number.parseInt(value, 10);
+  if (!Number.isFinite(id) || id < 1) {
+    throw new Error("Invalid classification entry id");
+  }
+  return id;
+}
+function parseUploadedImage(body) {
+  const dataUrl = String(body?.imageDataUrl || "");
+  let mime = String(body?.mime || "").trim().toLowerCase();
+  let base64 = String(body?.base64 || "").trim();
+
+  if (dataUrl) {
+    const match = dataUrl.match(/^data:(image\/(?:jpeg|jpg|png));base64,([A-Za-z0-9+/=\r\n]+)$/);
+    if (!match) {
+      throw new Error("Browser capture must be a JPEG or PNG image");
+    }
+
+    mime = match[1] === "image/jpg" ? "image/jpeg" : match[1];
+    base64 = match[2].replace(/\s/g, "");
+  }
+
+  if (mime === "image/jpg") {
+    mime = "image/jpeg";
+  }
+
+  if (!SUPPORTED_UPLOAD_TYPES.has(mime)) {
+    throw new Error("Unsupported image type from browser camera");
+  }
+
+  if (!base64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length % 4 !== 0) {
+    throw new Error("Browser camera returned invalid image data");
+  }
+
+  const buffer = Buffer.from(base64, "base64");
+  if (buffer.length < 256) {
+    throw new Error("Browser camera image is too small");
+  }
+
+  if (!matchesImageSignature(buffer, mime)) {
+    throw new Error("Browser camera image data does not match its file type");
+  }
+
+  return {
+    mime,
+    bytes: buffer.length,
+    base64: buffer.toString("base64")
+  };
+}
+
+function matchesImageSignature(buffer, mime) {
+  if (mime === "image/jpeg") {
+    return buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[buffer.length - 2] === 0xff && buffer[buffer.length - 1] === 0xd9;
+  }
+
+  if (mime === "image/png") {
+    return (
+      buffer.length >= 8 &&
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a
+    );
+  }
+
+  return false;
+}
 async function captureImage() {
   await setProgress("Capturing", "ESP32-CAM", "Requesting latest JPEG");
   await tryUpdateLcd("Capturing", "ESP32-CAM");
@@ -297,7 +696,7 @@ function getCameraJpegWithCurl(urlString) {
   });
 }
 
-async function classifyImage(base64Image) {
+async function classifyImage(base64Image, mimeType = "image/jpeg") {
   if (GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
     throw new Error("Set GEMINI_API_KEY before running classification");
   }
@@ -314,7 +713,7 @@ async function classifyImage(base64Image) {
           { text: GEMINI_PROMPT },
           {
             inline_data: {
-              mime_type: "image/jpeg",
+              mime_type: mimeType,
               data: base64Image
             }
           }
@@ -331,9 +730,19 @@ async function classifyImage(base64Image) {
           category: {
             type: "STRING",
             enum: ["Garbage", "Recycle", "Organic"]
+          },
+          confidenceLevel: {
+            type: "STRING",
+            enum: ["High", "Medium", "Low"]
+          },
+          confidenceScore: {
+            type: "NUMBER"
+          },
+          rationale: {
+            type: "STRING"
           }
         },
-        required: ["category"]
+        required: ["category", "confidenceLevel", "confidenceScore", "rationale"]
       }
     }
   };
@@ -350,24 +759,342 @@ async function classifyImage(base64Image) {
     throw new Error(`Gemini failed: HTTP ${response.status} ${bodyText}`);
   }
 
-  const body = JSON.parse(bodyText);
-  const candidateText = body?.candidates?.[0]?.content?.parts?.[0]?.text;
+  let body;
+  try {
+    body = JSON.parse(bodyText);
+  } catch (_error) {
+    throw new Error(`Gemini returned invalid JSON: ${bodyText.slice(0, 300)}`);
+  }
+
+  const candidateText = extractGeminiText(body);
   if (!candidateText) {
     throw new Error(`Gemini returned no classification: ${bodyText}`);
   }
 
-  const parsed = JSON.parse(candidateText);
-  return normalizeCategory(parsed.category);
+  try {
+    return parseGeminiClassificationText(candidateText);
+  } catch (error) {
+    console.warn(`[Gemini] Raw classification text: ${candidateText.slice(0, 500)}`);
+    throw error;
+  }
 }
 
-function normalizeCategory(value) {
+function normalizeSorterSettings(value = {}) {
+  return {
+    blueNudges: clampNumber(value?.blueNudges ?? value?.blueMs, WHEEL_BLUE_NUDGES, 1, 40),
+    blueHomeNudges: clampNumber(value?.blueHomeNudges ?? value?.blueHomeMs, WHEEL_BLUE_HOME_NUDGES, 1, 40),
+    greenNudges: clampNumber(value?.greenNudges ?? value?.greenMs, WHEEL_GREEN_NUDGES, 1, 40),
+    greenHomeNudges: clampNumber(value?.greenHomeNudges ?? value?.greenHomeMs, WHEEL_GREEN_HOME_NUDGES, 1, 40),
+    nudgeMs: clampInt(value?.nudgeMs, WHEEL_NUDGE_MS, 60, 1000),
+    speed: clampInt(value?.speed, WHEEL_SPEED, 80, 255),
+    leftDirection: normalizeWheelDirection(value?.leftDirection, WHEEL_LEFT_DIRECTION),
+    rightDirection: normalizeWheelDirection(value?.rightDirection, WHEEL_RIGHT_DIRECTION)
+  };
+}
+
+function normalizeWheelDirection(value, fallback) {
   const text = String(value || "").trim().toLowerCase();
-  if (text.includes("recycle")) return "Recycle";
-  if (text.includes("organic") || text.includes("compost")) return "Organic";
-  if (text.includes("garbage") || text.includes("trash") || text.includes("landfill")) return "Garbage";
-  throw new Error(`Unknown category from Gemini: ${value}`);
+  return text === "forward" || text === "reverse" ? text : fallback;
+}
+function sortTargetForCategory(category, sorterSettings = normalizeSorterSettings()) {
+  if (category === "Recycle") {
+    return {
+      label: "Blue Left",
+      side: "left",
+      nudges: sorterSettings.blueNudges,
+      returnNudges: sorterSettings.blueHomeNudges,
+      lcd: "Recycle Blue"
+    };
+  }
+
+  if (category === "Organic") {
+    return {
+      label: "Green Right",
+      side: "right",
+      nudges: sorterSettings.greenNudges,
+      returnNudges: sorterSettings.greenHomeNudges,
+      lcd: "Organic Green"
+    };
+  }
+
+  return {
+    label: "Garbage Home",
+    side: null,
+    nudges: 0,
+    returnNudges: 0,
+    lcd: "Garbage Home"
+  };
 }
 
+async function sortAndOpenForCategory(category, sorterSettings = normalizeSorterSettings()) {
+  const target = sortTargetForCategory(category, sorterSettings);
+
+  if (target.side) {
+    await setProgress("Aligning Bin", target.label, `${target.nudges} ${target.side} nudges from Garbage Home`);
+    await tryUpdateLcd("Aligning Bin", target.lcd);
+    await moveWheelNudges(target.side, target.nudges, target.label, sorterSettings);
+  } else {
+    await setProgress("Aligning Bin", target.label, "Garbage is already at the home position");
+    await tryUpdateLcd("Bin Ready", target.lcd);
+  }
+
+  await setProgress("Opening Lid", target.label, `Opening lid for ${category}`);
+  await tryUpdateLcd("Opening Lid", category);
+  await openLid();
+
+  if (target.side) {
+    const returnSide = oppositeSide(target.side);
+    await setProgress("Returning Home", "Garbage Home", `${target.returnNudges} ${returnSide} nudges back to home`);
+    await tryUpdateLcd("Return Home", "Garbage");
+    await moveWheelNudges(returnSide, target.returnNudges, "Return Home", sorterSettings);
+  }
+
+  await setProgress("Ready", "Garbage Home", "Wheel is ready at Garbage/Home for the next item");
+  await tryUpdateLcd("Ready", "Garbage Home");
+}
+
+async function moveWheelNudges(side, count, label, sorterSettings = normalizeSorterSettings()) {
+  const segments = wheelStepSegments(count, sorterSettings.nudgeMs);
+  const totalText = formatNudgeCount(count);
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    const progressText = `${formatNudgeCount(segment.completed)}/${totalText}`;
+    const sideLabel = side === "left" ? "Left" : "Right";
+    const detail = segment.fraction < 1
+      ? `${sideLabel} half nudge ${progressText}`
+      : `${sideLabel} nudge ${progressText}`;
+
+    await setProgress(label, progressText, detail);
+    await tryUpdateLcd(safeLcdText(label), progressText);
+    await rotateMotorRaw({
+      direction: wheelDirectionForSide(side, sorterSettings),
+      ms: segment.ms
+    });
+    await sleep(WHEEL_PAUSE_MS);
+  }
+}
+
+function wheelStepSegments(count, nudgeMs) {
+  const normalized = clampNumber(count, 0, 0, 40);
+  const fullSteps = Math.floor(normalized);
+  const fraction = normalized - fullSteps;
+  const segments = [];
+  let completed = 0;
+
+  for (let index = 0; index < fullSteps; index += 1) {
+    completed += 1;
+    segments.push({ ms: nudgeMs, fraction: 1, completed });
+  }
+
+  if (fraction >= 0.05) {
+    completed = normalized;
+    segments.push({
+      ms: Math.max(WHEEL_PARTIAL_NUDGE_MIN_MS, Math.round(nudgeMs * fraction)),
+      fraction,
+      completed
+    });
+  }
+
+  return segments;
+}
+
+function formatNudgeCount(value) {
+  const numeric = Number.parseFloat(value);
+  if (!Number.isFinite(numeric)) return "0";
+  return Number.isInteger(numeric) ? String(numeric) : String(Number(numeric.toFixed(2)));
+}
+
+function wheelDirectionForSide(side, sorterSettings = normalizeSorterSettings()) {
+  return side === "left" ? sorterSettings.leftDirection : sorterSettings.rightDirection;
+}
+
+function oppositeSide(side) {
+  return side === "left" ? "right" : "left";
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function extractGeminiText(body) {
+  const parts = body?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) {
+    return "";
+  }
+
+  return parts
+    .map(part => typeof part?.text === "string" ? part.text : "")
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function parseGeminiClassificationText(text) {
+  const rawText = String(text || "").trim();
+  const parsed = tryParseJsonObject(rawText);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return normalizeClassificationResult(parsed, rawText);
+  }
+
+  return normalizeClassificationResult({ category: rawText, rationale: rawText }, rawText);
+}
+
+function tryParseJsonObject(text) {
+  let source = String(text || "").trim();
+  const fenced = source.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) {
+    source = fenced[1].trim();
+  }
+
+  try {
+    return JSON.parse(source);
+  } catch (_error) {
+    const start = source.indexOf("{");
+    const end = source.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(source.slice(start, end + 1));
+      } catch (__error) {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeClassificationResult(value, rawText = "") {
+  const rawCategory = value?.category ?? value?.classification ?? value?.label ?? value?.type ?? value?.result ?? rawText;
+  const category = normalizeCategory(rawCategory, rawText);
+  const rawConfidence = value?.confidence;
+  const confidenceScore = normalizeConfidenceScore(
+    value?.confidenceScore ??
+    value?.confidence_score ??
+    value?.score ??
+    (typeof rawConfidence === "number" ? rawConfidence : undefined)
+  );
+  let confidenceLevel = normalizeConfidenceLevel(
+    value?.confidenceLevel ??
+    value?.confidence_level ??
+    value?.certainty ??
+    (typeof rawConfidence === "string" ? rawConfidence : undefined),
+    confidenceScore
+  );
+  if (!confidenceScore && /\b(unknown|unsure|uncertain|cannot determine)\b/i.test(String(rawCategory))) {
+    confidenceLevel = "Low";
+  }
+
+  const rationale = normalizeRationale(
+    value?.rationale ??
+    value?.reason ??
+    value?.explanation ??
+    value?.details ??
+    rawText ??
+    `Gemini selected ${category}`
+  );
+  return { category, confidenceLevel, confidenceScore, rationale };
+}
+
+function normalizeConfidenceScore(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  let score = Number(value);
+  if (!Number.isFinite(score)) {
+    return null;
+  }
+
+  if (score > 0 && score <= 1) {
+    score *= 100;
+  }
+
+  return Math.round(Math.min(100, Math.max(0, score)) * 10) / 10;
+}
+
+function normalizeConfidenceLevel(value, score = null) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "high") return "High";
+  if (text === "medium") return "Medium";
+  if (text === "low") return "Low";
+
+  if (typeof score === "number") {
+    if (score >= 80) return "High";
+    if (score >= 55) return "Medium";
+    return "Low";
+  }
+
+  return "Medium";
+}
+
+function normalizeRationale(value) {
+  return String(value || "").replace(/[\r\n\t]+/g, " ").trim().slice(0, 500);
+}
+
+function formatConfidenceSummary(classification) {
+  const parts = [];
+  if (classification.confidenceLevel) {
+    parts.push(classification.confidenceLevel);
+  }
+  if (classification.confidenceScore !== null && classification.confidenceScore !== undefined) {
+    parts.push(`${classification.confidenceScore}%`);
+  }
+  return parts.length ? `(${parts.join(" ")})` : "";
+}
+
+function normalizeCategory(value, rawText = "") {
+  const primary = categoryFromText(value);
+  if (primary) {
+    return primary;
+  }
+
+  const fallback = categoryFromText(rawText);
+  if (fallback) {
+    return fallback;
+  }
+
+  const excerpt = String(value || rawText || "").replace(/[\r\n\t]+/g, " ").trim().slice(0, 180);
+  throw new Error(`Unknown category from Gemini: ${excerpt || "empty response"}`);
+}
+
+function categoryFromText(value) {
+  const text = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  if (!text) {
+    return null;
+  }
+
+  if (/\b(garbage|trash|landfill|general waste|non recyclable|nonrecyclable|not recyclable|other|unknown|unsure|uncertain)\b/.test(text) || text.includes("cannot determine")) {
+    return "Garbage";
+  }
+  if (/\b(organic|compost|compostable|food scrap|food waste|fruit|vegetable|plant matter|yard waste|green bin)\b/.test(text)) {
+    return "Organic";
+  }
+  if (/\b(recycle|recyclable|plastic|paper|cardboard|carton|metal|aluminum|aluminium|can|bottle|glass|tin|container|jar|cup|blue bin)\b/.test(text)) {
+    return "Recycle";
+  }
+
+  return null;
+}
+
+async function getEsp32Telemetry() {
+  if (!ESP32_S3_CONTROL_URL) {
+    throw new Error("ESP32-S3 control URL is not configured");
+  }
+
+  const url = `${ESP32_S3_CONTROL_URL.replace(/\/$/, "")}/voltage`;
+  const response = await fetch(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(3000)
+  });
+
+  const bodyText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Telemetry failed: HTTP ${response.status} ${bodyText}`);
+  }
+
+  return JSON.parse(bodyText);
+}
 async function updateLcd(line1, line2) {
   if (!ESP32_S3_CONTROL_URL) return;
 
@@ -397,6 +1124,89 @@ async function tryUpdateLcd(line1, line2) {
   }
 }
 
+async function rotateMotorRaw(options = {}) {
+  if (!ESP32_S3_CONTROL_URL) {
+    throw new Error("ESP32-S3 control URL is not configured");
+  }
+
+  const direction = ["forward", "reverse", "stop"].includes(String(options.direction || "").toLowerCase())
+    ? String(options.direction).toLowerCase()
+    : "forward";
+  const ms = direction === "stop" ? 50 : clampInt(options.ms, 300, WHEEL_PARTIAL_NUDGE_MIN_MS, 1000);
+
+  const url = `${ESP32_S3_CONTROL_URL.replace(/\/$/, "")}/motor-raw`;
+  const params = new URLSearchParams({
+    direction,
+    ms: String(ms)
+  });
+
+  const response = await fetch(`${url}?${params}`, {
+    method: "POST",
+    signal: AbortSignal.timeout(Math.max(5000, ms + 3000))
+  });
+
+  const bodyText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Raw wheel command failed: HTTP ${response.status} ${bodyText}`);
+  }
+
+  try {
+    return JSON.parse(bodyText);
+  } catch (_error) {
+    return { raw: bodyText };
+  }
+}
+
+async function rotateMotor(options = {}) {
+  if (!ESP32_S3_CONTROL_URL) {
+    throw new Error("ESP32-S3 control URL is not configured");
+  }
+
+  const direction = ["forward", "reverse", "stop"].includes(String(options.direction || "").toLowerCase())
+    ? String(options.direction).toLowerCase()
+    : "forward";
+  const ms = direction === "stop" ? 100 : clampInt(options.ms, 800, 100, 5000);
+  const speed = direction === "stop" ? 0 : clampInt(options.speed, 255, 0, 255);
+
+  const url = `${ESP32_S3_CONTROL_URL.replace(/\/$/, "")}/motor`;
+  const params = new URLSearchParams({
+    direction,
+    ms: String(ms),
+    speed: String(speed)
+  });
+
+  const response = await fetch(`${url}?${params}`, {
+    method: "POST",
+    signal: AbortSignal.timeout(Math.max(5000, ms + 4000))
+  });
+
+  const bodyText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Wheel command failed: HTTP ${response.status} ${bodyText}`);
+  }
+
+  try {
+    return JSON.parse(bodyText);
+  } catch (_error) {
+    return { raw: bodyText };
+  }
+}
+
+function clampInt(value, fallback, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function clampNumber(value, fallback, min, max) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, parsed));
+}
 async function openLid() {
   if (!ESP32_S3_CONTROL_URL) {
     throw new Error("ESP32-S3 control URL is not configured");
@@ -441,7 +1251,8 @@ function broadcast(eventName, data) {
 
 app.listen(PORT, () => {
   console.log(`Waste Sorter Dashboard running at http://localhost:${PORT}`);
-  console.log(`Camera: ${CAMERA_CAPTURE_URL}`);
+  console.log(`Camera source: ${CAMERA_LABEL}`);
+  console.log(`Legacy ESP32-CAM URL: ${CAMERA_CAPTURE_URL}`);
   console.log(`ESP32-S3 control: ${ESP32_S3_CONTROL_URL}`);
   console.log(`Gemini model: ${GEMINI_MODEL}`);
 });

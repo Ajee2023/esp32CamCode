@@ -18,7 +18,27 @@ constexpr uint8_t LCD_SCL_PIN = 9;
 constexpr uint8_t MOTOR_ENA_PIN = 5;
 constexpr uint8_t MOTOR_IN1_PIN = 6;
 constexpr uint8_t MOTOR_IN2_PIN = 7;
+constexpr uint8_t MOTOR_STBY_PIN = 4;
 constexpr uint8_t SERVO_PIN = 10;
+
+constexpr uint8_t MOTOR_PWM_CHANNEL = 0;
+constexpr uint16_t MOTOR_PWM_FREQUENCY_HZ = 1000;
+constexpr uint8_t MOTOR_PWM_RESOLUTION_BITS = 8;
+constexpr uint8_t MOTOR_DEFAULT_SPEED = 255;
+constexpr uint8_t MOTOR_MAX_SPEED = 255;
+constexpr uint16_t MOTOR_DEFAULT_RUN_MS = 800;
+constexpr uint16_t MOTOR_MAX_RUN_MS = 5000;
+constexpr uint16_t MOTOR_RAW_MIN_RUN_MS = 30;
+constexpr uint8_t MOTOR_START_BOOST_SPEED = 255;
+constexpr uint8_t MOTOR_START_BOOST_THRESHOLD = 245;
+constexpr uint16_t MOTOR_START_BOOST_MS = 350;
+
+constexpr uint8_t VOLTAGE_VM_PIN = 1;
+constexpr uint8_t VOLTAGE_SERVO_PIN = 2;
+constexpr uint8_t VOLTAGE_LOGIC_PIN = 3;
+constexpr float VOLTAGE_DIVIDER_RATIO = 4.0f;  // 30k top resistor, 10k bottom resistor.
+constexpr uint8_t VOLTAGE_SAMPLE_COUNT = 16;
+constexpr uint16_t VOLTAGE_ADC_SATURATED_MV = 3000;
 
 constexpr uint8_t SERVO_PWM_CHANNEL = 1;
 constexpr uint16_t SERVO_PWM_FREQUENCY = 50;
@@ -35,16 +55,185 @@ WebServer server(80);
 
 String currentLine1 = "Web Control";
 String currentLine2 = "Ready";
+bool motorRunning = false;
+bool motorPwmAttached = false;
+uint32_t motorStopAt = 0;
+uint32_t motorBoostUntil = 0;
+bool motorBoostActive = false;
+uint16_t activeMotorDurationMs = 0;
+uint8_t activeMotorSpeed = 0;
+String activeMotorDirection = "stop";
+
+void showLcd(const String &line1, const String &line2);
+
+void attachMotorPwm() {
+  if (!motorPwmAttached) {
+    ledcAttachPin(MOTOR_ENA_PIN, MOTOR_PWM_CHANNEL);
+    motorPwmAttached = true;
+  }
+}
+
+void detachMotorPwm() {
+  if (motorPwmAttached) {
+    ledcWrite(MOTOR_PWM_CHANNEL, 0);
+    ledcDetachPin(MOTOR_ENA_PIN);
+    motorPwmAttached = false;
+  }
+  pinMode(MOTOR_ENA_PIN, OUTPUT);
+  digitalWrite(MOTOR_ENA_PIN, LOW);
+}
 
 void motorOff() {
+  motorRunning = false;
+  activeMotorDirection = "stop";
+  motorBoostActive = false;
+  motorBoostUntil = 0;
+  activeMotorDurationMs = 0;
+  activeMotorSpeed = 0;
+  if (motorPwmAttached) {
+    ledcWrite(MOTOR_PWM_CHANNEL, 0);
+  } else {
+    digitalWrite(MOTOR_ENA_PIN, LOW);
+  }
+  digitalWrite(MOTOR_IN1_PIN, LOW);
+  digitalWrite(MOTOR_IN2_PIN, LOW);
+  digitalWrite(MOTOR_STBY_PIN, LOW);
+}
+
+void setupMotor() {
   pinMode(MOTOR_ENA_PIN, OUTPUT);
   pinMode(MOTOR_IN1_PIN, OUTPUT);
   pinMode(MOTOR_IN2_PIN, OUTPUT);
+  pinMode(MOTOR_STBY_PIN, OUTPUT);
 
-  analogWrite(MOTOR_ENA_PIN, 0);
   digitalWrite(MOTOR_ENA_PIN, LOW);
   digitalWrite(MOTOR_IN1_PIN, LOW);
   digitalWrite(MOTOR_IN2_PIN, LOW);
+  digitalWrite(MOTOR_STBY_PIN, LOW);
+
+  ledcSetup(MOTOR_PWM_CHANNEL, MOTOR_PWM_FREQUENCY_HZ, MOTOR_PWM_RESOLUTION_BITS);
+  attachMotorPwm();
+  motorOff();
+}
+
+void motorForward(uint8_t speed) {
+  attachMotorPwm();
+  digitalWrite(MOTOR_STBY_PIN, HIGH);
+  digitalWrite(MOTOR_IN1_PIN, HIGH);
+  digitalWrite(MOTOR_IN2_PIN, LOW);
+  ledcWrite(MOTOR_PWM_CHANNEL, speed);
+}
+
+void motorReverse(uint8_t speed) {
+  attachMotorPwm();
+  digitalWrite(MOTOR_STBY_PIN, HIGH);
+  digitalWrite(MOTOR_IN1_PIN, LOW);
+  digitalWrite(MOTOR_IN2_PIN, HIGH);
+  ledcWrite(MOTOR_PWM_CHANNEL, speed);
+}
+
+void runMotorPulse(const String &direction, uint16_t durationMs, uint8_t speed) {
+  speed = constrain(speed, 0, MOTOR_MAX_SPEED);
+  durationMs = constrain(durationMs, 100, MOTOR_MAX_RUN_MS);
+
+  if (speed == 0) {
+    motorOff();
+    showLcd("Wheel", "Stopped");
+    return;
+  }
+
+  motorOff();
+  activeMotorDirection = direction;
+  activeMotorDurationMs = durationMs;
+  activeMotorSpeed = speed;
+  motorStopAt = millis() + durationMs;
+  motorBoostActive = speed < MOTOR_START_BOOST_THRESHOLD && durationMs > MOTOR_START_BOOST_MS;
+  motorBoostUntil = motorBoostActive ? millis() + MOTOR_START_BOOST_MS : 0;
+  motorRunning = true;
+
+  const uint8_t startSpeed = motorBoostActive ? MOTOR_START_BOOST_SPEED : speed;
+  const bool reverseDirection = direction == "reverse" || direction == "ccw" || direction == "counterclockwise";
+
+  if (reverseDirection) {
+    Serial.print("Wheel reverse, speed ");
+    Serial.print(speed);
+    Serial.print(", ms ");
+    Serial.print(durationMs);
+    if (motorBoostActive) {
+      Serial.print(", boost ");
+      Serial.print(MOTOR_START_BOOST_SPEED);
+      Serial.print(" for ");
+      Serial.print(MOTOR_START_BOOST_MS);
+      Serial.print("ms");
+    }
+    Serial.println();
+    showLcd("Wheel Reverse", String(durationMs) + "ms");
+    motorReverse(startSpeed);
+  } else {
+    Serial.print("Wheel forward, speed ");
+    Serial.print(speed);
+    Serial.print(", ms ");
+    Serial.print(durationMs);
+    if (motorBoostActive) {
+      Serial.print(", boost ");
+      Serial.print(MOTOR_START_BOOST_SPEED);
+      Serial.print(" for ");
+      Serial.print(MOTOR_START_BOOST_MS);
+      Serial.print("ms");
+    }
+    Serial.println();
+    showLcd("Wheel Forward", String(durationMs) + "ms");
+    motorForward(startSpeed);
+  }
+}
+
+void updateMotor() {
+  if (!motorRunning) {
+    return;
+  }
+
+  if (motorBoostActive && (int32_t)(millis() - motorBoostUntil) >= 0) {
+    motorBoostActive = false;
+    ledcWrite(MOTOR_PWM_CHANNEL, activeMotorSpeed);
+    Serial.print("Wheel boost complete, PWM now ");
+    Serial.println(activeMotorSpeed);
+  }
+
+  if ((int32_t)(millis() - motorStopAt) >= 0) {
+    motorOff();
+    Serial.println("Wheel stopped.");
+    showLcd("Wheel", "Stopped");
+  }
+}
+
+void runMotorRawPulse(const String &direction, uint16_t durationMs) {
+  durationMs = constrain(durationMs, MOTOR_RAW_MIN_RUN_MS, 1000);
+  motorOff();
+  detachMotorPwm();
+
+  const bool reverseDirection = direction == "reverse" || direction == "ccw" || direction == "counterclockwise";
+  digitalWrite(MOTOR_STBY_PIN, HIGH);
+  if (reverseDirection) {
+    digitalWrite(MOTOR_IN1_PIN, LOW);
+    digitalWrite(MOTOR_IN2_PIN, HIGH);
+  } else {
+    digitalWrite(MOTOR_IN1_PIN, HIGH);
+    digitalWrite(MOTOR_IN2_PIN, LOW);
+  }
+
+  Serial.print("RAW wheel ");
+  Serial.print(reverseDirection ? "reverse" : "forward");
+  Serial.print(", ms ");
+  Serial.println(durationMs);
+  showLcd(reverseDirection ? "Raw Reverse" : "Raw Forward", String(durationMs) + "ms");
+
+  digitalWrite(MOTOR_ENA_PIN, HIGH);
+  delay(durationMs);
+  digitalWrite(MOTOR_ENA_PIN, LOW);
+  motorOff();
+  attachMotorPwm();
+  motorOff();
+  showLcd("Raw Wheel", "Stopped");
 }
 
 void writeServoAngle(uint8_t angle) {
@@ -60,6 +249,68 @@ void setupServo() {
   writeServoAngle(SERVO_CLOSED_DEGREES);
 }
 
+void resetLcdBus() {
+  Wire.end();
+  delay(100);
+  Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
+  delay(100);
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  delay(50);
+}
+
+void setupVoltageMonitor() {
+  pinMode(VOLTAGE_VM_PIN, INPUT_PULLDOWN);
+  pinMode(VOLTAGE_SERVO_PIN, INPUT_PULLDOWN);
+  pinMode(VOLTAGE_LOGIC_PIN, INPUT_PULLDOWN);
+
+  analogReadResolution(12);
+  analogSetPinAttenuation(VOLTAGE_VM_PIN, ADC_11db);
+  analogSetPinAttenuation(VOLTAGE_SERVO_PIN, ADC_11db);
+  analogSetPinAttenuation(VOLTAGE_LOGIC_PIN, ADC_11db);
+}
+
+uint32_t readAdcMilliVolts(uint8_t pin) {
+  uint32_t total = 0;
+  for (uint8_t i = 0; i < VOLTAGE_SAMPLE_COUNT; i++) {
+    total += analogReadMilliVolts(pin);
+    delayMicroseconds(250);
+  }
+  return total / VOLTAGE_SAMPLE_COUNT;
+}
+
+String voltageChannelJson(const char *id, const char *label, uint8_t pin) {
+  const uint32_t adcMilliVolts = readAdcMilliVolts(pin);
+  const bool saturated = adcMilliVolts >= VOLTAGE_ADC_SATURATED_MV;
+  const float volts = (adcMilliVolts / 1000.0f) * VOLTAGE_DIVIDER_RATIO;
+
+  String json = "{";
+  json += "\"id\":\"" + String(id) + "\",";
+  json += "\"label\":\"" + String(label) + "\",";
+  json += "\"pin\":" + String(pin) + ",";
+  json += "\"dividerRatio\":" + String(VOLTAGE_DIVIDER_RATIO, 2) + ",";
+  json += "\"adcMilliVolts\":" + String(adcMilliVolts) + ",";
+  json += "\"status\":\"" + String(saturated ? "saturated" : "ok") + "\",";
+  json += "\"volts\":" + String(volts, 2);
+  json += "}";
+  return json;
+}
+
+String voltageJson() {
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"divider\":\"30k_to_signal_10k_to_ground\",";
+  json += "\"channels\":[";
+  json += voltageChannelJson("motorVm", "Motor VM", VOLTAGE_VM_PIN);
+  json += ",";
+  json += voltageChannelJson("servo5v", "Servo / 5V", VOLTAGE_SERVO_PIN);
+  json += ",";
+  json += voltageChannelJson("logic3v3", "Logic 3.3V", VOLTAGE_LOGIC_PIN);
+  json += "]";
+  json += "}";
+  return json;
+}
 String lcdText(const String &value) {
   String text = value;
   text.replace("\r", " ");
@@ -101,15 +352,28 @@ void handleOptions() {
 
 void handleStatus() {
   sendCorsHeaders();
+  const uint32_t remainingMs = motorRunning && (int32_t)(motorStopAt - millis()) > 0
+    ? motorStopAt - millis()
+    : 0;
+
   String json = "{";
   json += "\"ok\":true,";
   json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
   json += "\"line1\":\"" + currentLine1 + "\",";
   json += "\"line2\":\"" + currentLine2 + "\",";
-  json += "\"motorLocked\":true,";
+  json += "\"motorLocked\":" + String(motorRunning ? "true" : "false") + ",";
+  json += "\"motorRunning\":" + String(motorRunning ? "true" : "false") + ",";
+  json += "\"motorRemainingMs\":" + String(remainingMs) + ",";
+  json += "\"motorDirection\":\"" + activeMotorDirection + "\",";
+  json += "\"motorSpeed\":" + String(activeMotorSpeed) + ",";
   json += "\"lidLocked\":false";
   json += "}";
   server.send(200, "application/json", json);
+}
+
+void handleVoltage() {
+  sendCorsHeaders();
+  server.send(200, "application/json", voltageJson());
 }
 
 void handleLcd() {
@@ -128,10 +392,86 @@ void handleLcd() {
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
-void handleLockedAction() {
+void handleLcdReset() {
   sendCorsHeaders();
-  motorOff();
-  server.send(423, "application/json", "{\"ok\":false,\"message\":\"Motor action is locked for calibration.\"}");
+  resetLcdBus();
+  showLcd("Waste Sorter", "Ready");
+  server.send(200, "application/json", "{\"ok\":true,\"message\":\"LCD reset\"}");
+}
+
+void handleMotorRaw() {
+  sendCorsHeaders();
+
+  String direction = server.arg("direction");
+  direction.toLowerCase();
+  if (direction.length() == 0) {
+    direction = "forward";
+  }
+
+  uint16_t durationMs = 300;
+  if (server.hasArg("ms")) {
+    durationMs = static_cast<uint16_t>(server.arg("ms").toInt());
+  }
+  durationMs = constrain(durationMs, MOTOR_RAW_MIN_RUN_MS, 1000);
+
+  if (direction == "stop") {
+    motorOff();
+    attachMotorPwm();
+    motorOff();
+    showLcd("Wheel", "Stopped");
+    server.send(200, "application/json", "{\"ok\":true,\"message\":\"Raw motor stopped\"}");
+    return;
+  }
+
+  runMotorRawPulse(direction, durationMs);
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"mode\":\"raw\",";
+  json += "\"direction\":\"" + direction + "\",";
+  json += "\"ms\":" + String(durationMs);
+  json += "}";
+  server.send(200, "application/json", json);
+}
+
+void handleMotor() {
+  sendCorsHeaders();
+
+  String direction = server.arg("direction");
+  direction.toLowerCase();
+  if (direction.length() == 0) {
+    direction = "forward";
+  }
+
+  uint16_t durationMs = MOTOR_DEFAULT_RUN_MS;
+  if (server.hasArg("ms")) {
+    durationMs = static_cast<uint16_t>(server.arg("ms").toInt());
+  }
+
+  uint8_t speed = MOTOR_DEFAULT_SPEED;
+  if (server.hasArg("speed")) {
+    speed = static_cast<uint8_t>(server.arg("speed").toInt());
+  }
+
+  durationMs = constrain(durationMs, 100, MOTOR_MAX_RUN_MS);
+  speed = constrain(speed, 0, MOTOR_MAX_SPEED);
+
+  if (direction == "stop") {
+    motorOff();
+    showLcd("Wheel", "Stopped");
+    server.send(200, "application/json", "{\"ok\":true,\"message\":\"Motor stopped\"}");
+    return;
+  }
+
+  runMotorPulse(direction, durationMs, speed);
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"direction\":\"" + direction + "\",";
+  json += "\"ms\":" + String(durationMs) + ",";
+  json += "\"speed\":" + String(speed);
+  json += "}";
+  server.send(200, "application/json", json);
 }
 
 void handleLid() {
@@ -204,11 +544,28 @@ void ensureWifi() {
 void setupRoutes() {
   server.on("/", HTTP_GET, handleStatus);
   server.on("/status", HTTP_GET, handleStatus);
+  server.on("/voltage", HTTP_OPTIONS, handleOptions);
+  server.on("/voltage", HTTP_GET, handleVoltage);
+  server.on("/telemetry", HTTP_OPTIONS, handleOptions);
+  server.on("/telemetry", HTTP_GET, handleVoltage);
   server.on("/lcd", HTTP_OPTIONS, handleOptions);
   server.on("/lcd", HTTP_POST, handleLcd);
   server.on("/lcd", HTTP_GET, handleLcd);
+  server.on("/lcd-reset", HTTP_OPTIONS, handleOptions);
+  server.on("/lcd-reset", HTTP_POST, handleLcdReset);
+  server.on("/lcd-reset", HTTP_GET, handleLcdReset);
   server.on("/motor", HTTP_OPTIONS, handleOptions);
-  server.on("/motor", HTTP_POST, handleLockedAction);
+  server.on("/motor", HTTP_POST, handleMotor);
+  server.on("/motor", HTTP_GET, handleMotor);
+  server.on("/wheel", HTTP_OPTIONS, handleOptions);
+  server.on("/wheel", HTTP_POST, handleMotor);
+  server.on("/wheel", HTTP_GET, handleMotor);
+  server.on("/motor-raw", HTTP_OPTIONS, handleOptions);
+  server.on("/motor-raw", HTTP_POST, handleMotorRaw);
+  server.on("/motor-raw", HTTP_GET, handleMotorRaw);
+  server.on("/wheel-raw", HTTP_OPTIONS, handleOptions);
+  server.on("/wheel-raw", HTTP_POST, handleMotorRaw);
+  server.on("/wheel-raw", HTTP_GET, handleMotorRaw);
   server.on("/lid", HTTP_OPTIONS, handleOptions);
   server.on("/lid", HTTP_POST, handleLid);
   server.on("/lid", HTTP_GET, handleLid);
@@ -219,11 +576,10 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   delay(1000);
 
-  motorOff();
+  setupMotor();
+  setupVoltageMonitor();
   setupServo();
-  Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
-  lcd.init();
-  lcd.backlight();
+  resetLcdBus();
   showLcd("Web Control", "Booting");
 
   connectWifi();
@@ -234,6 +590,6 @@ void setup() {
 void loop() {
   ensureWifi();
   server.handleClient();
-  motorOff();
+  updateMotor();
   delay(2);
 }
