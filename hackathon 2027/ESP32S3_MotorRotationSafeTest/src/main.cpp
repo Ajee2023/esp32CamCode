@@ -7,6 +7,7 @@ constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint8_t MOTOR_ENA_PIN = 5;
 constexpr uint8_t MOTOR_IN1_PIN = 6;
 constexpr uint8_t MOTOR_IN2_PIN = 7;
+constexpr uint8_t MOTOR_STBY_PIN = 4;
 
 constexpr uint8_t I2C_SDA_PIN = 8;
 constexpr uint8_t I2C_SCL_PIN = 9;
@@ -55,11 +56,13 @@ void motorOff() {
   ledcWrite(PWM_CHANNEL, 0);
   digitalWrite(MOTOR_IN1_PIN, LOW);
   digitalWrite(MOTOR_IN2_PIN, LOW);
+  digitalWrite(MOTOR_STBY_PIN, HIGH);
 
-  Serial.println("Pins: ENA PWM=0, IN1=LOW, IN2=LOW");
+  Serial.println("Pins: STBY=HIGH, PWM=0, IN1=LOW, IN2=LOW");
 }
 
 void motorClockwise(uint8_t duty) {
+  digitalWrite(MOTOR_STBY_PIN, HIGH);
   digitalWrite(MOTOR_IN1_PIN, HIGH);
   digitalWrite(MOTOR_IN2_PIN, LOW);
   ledcWrite(PWM_CHANNEL, duty);
@@ -70,6 +73,7 @@ void motorClockwise(uint8_t duty) {
 }
 
 void motorCounterClockwise(uint8_t duty) {
+  digitalWrite(MOTOR_STBY_PIN, HIGH);
   digitalWrite(MOTOR_IN1_PIN, LOW);
   digitalWrite(MOTOR_IN2_PIN, HIGH);
   ledcWrite(PWM_CHANNEL, duty);
@@ -132,6 +136,8 @@ void setup() {
   pinMode(MOTOR_IN1_PIN, OUTPUT);
   pinMode(MOTOR_IN2_PIN, OUTPUT);
   pinMode(MOTOR_ENA_PIN, OUTPUT);
+  pinMode(MOTOR_STBY_PIN, OUTPUT);
+  digitalWrite(MOTOR_STBY_PIN, HIGH);
 
   ledcSetup(PWM_CHANNEL, PWM_FREQUENCY_HZ, PWM_RESOLUTION_BITS);
   ledcAttachPin(MOTOR_ENA_PIN, PWM_CHANNEL);

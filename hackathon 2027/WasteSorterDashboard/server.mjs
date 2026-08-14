@@ -1,5 +1,6 @@
 import express from "express";
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import net from "node:net";
@@ -17,6 +18,17 @@ const app = express();
 const PORT = Number(process.env.PORT || 3400);
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_API_KEY";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
+const EDGE_IMPULSE_API_KEY = process.env.EDGE_IMPULSE_API_KEY || "";
+const EDGE_IMPULSE_PROJECT_ID = String(process.env.EDGE_IMPULSE_PROJECT_ID || "").trim();
+const EDGE_IMPULSE_IMPULSE_ID = String(process.env.EDGE_IMPULSE_IMPULSE_ID || "").trim();
+const EDGE_IMPULSE_MODE = normalizeEdgeImpulseMode(process.env.EDGE_IMPULSE_MODE || "auto");
+const EDGE_IMPULSE_OFFLINE_URL = String(process.env.EDGE_IMPULSE_OFFLINE_URL || "").trim();
+const EDGE_IMPULSE_REQUIRED = parseBool(process.env.EDGE_IMPULSE_REQUIRED, false);
+const EDGE_IMPULSE_DECISION_POLICY = normalizeDecisionPolicy(process.env.EDGE_IMPULSE_DECISION_POLICY || "gemini-primary");
+const EDGE_IMPULSE_LABEL = process.env.EDGE_IMPULSE_LABEL || "Edge Impulse";
+const EDGE_IMPULSE_CONFIDENCE_THRESHOLD = clampNumber(process.env.EDGE_IMPULSE_CONFIDENCE_THRESHOLD, 30, 0, 100);
+const EDGE_IMPULSE_REVIEW_UPLOAD = parseBool(process.env.EDGE_IMPULSE_REVIEW_UPLOAD, true);
+const EDGE_IMPULSE_REVIEW_CATEGORY = normalizeEdgeImpulseReviewCategory(process.env.EDGE_IMPULSE_REVIEW_CATEGORY || "training");
 const CAMERA_SOURCE = process.env.CAMERA_SOURCE || "browser";
 const CAMERA_CAPTURE_URL = process.env.CAMERA_CAPTURE_URL || "http://192.168.137.9/capture";
 const CAMERA_LABEL = CAMERA_SOURCE === "browser" ? "Laptop HD Camera" : "ESP32-CAM";
@@ -35,8 +47,8 @@ const WHEEL_RIGHT_DIRECTION = String(process.env.WHEEL_RIGHT_DIRECTION || "forwa
 
 const GEMINI_PROMPT =
   "Classify the main visible waste item in this image for a smart trash sorter. " +
-  "You must choose exactly one category from: Garbage, Recycle, Organic. " +
-  "Never answer Unknown, Other, or Unsure; choose the closest category when uncertain. " +
+  "Choose exactly one category from: Garbage, Recycle, Organic, Unknown. " +
+  "Use Unknown when the image has no clear waste item or cannot be confidently mapped to Garbage, Recycle, or Organic. " +
   "Return only JSON with category, confidenceLevel, confidenceScore, and rationale fields. " +
   "confidenceLevel must be High, Medium, or Low. confidenceScore must be a number from 0 to 100. " +
   "For common plastic, metal, paper, cardboard, or glass packaging choose Recycle. " +
@@ -45,14 +57,7 @@ const GEMINI_PROMPT =
   "Keep rationale under 140 characters.";
 
 const progressClients = new Set();
-let latestRun = {
-  id: null,
-  status: "idle",
-  category: null,
-  imageDataUrl: null,
-  steps: [],
-  message: "Ready"
-};
+let latestRun = createRunState(null, "idle", "Ready");
 
 app.use(express.json({ limit: "8mb" }));
 app.use(express.static(path.join(__dirname, "public"), {
@@ -74,6 +79,8 @@ app.get("/api/config", (_req, res) => {
     esp32S3ControlUrl: ESP32_S3_CONTROL_URL,
     geminiModel: GEMINI_MODEL,
     hasGeminiKey: GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY",
+    aiMode: buildAiModelLabel(),
+    edgeImpulse: getEdgeImpulseConfigStatus(),
     sorter: {
       home: "Garbage",
       recycle: "Blue Left",
@@ -152,18 +159,7 @@ app.get("/api/events", (req, res) => {
 
 app.post("/api/classify-upload", async (req, res) => {
   const runId = `run-${Date.now()}`;
-  latestRun = {
-    id: runId,
-    status: "running",
-    category: null,
-    confidenceLevel: null,
-    confidenceScore: null,
-    rationale: null,
-    summaryEntry: null,
-    imageDataUrl: null,
-    steps: [],
-    message: "Starting"
-  };
+  latestRun = createRunState(runId);
 
   broadcast("snapshot", latestRun);
 
@@ -183,31 +179,47 @@ app.post("/api/classify-upload", async (req, res) => {
     await setProgress("Classifying", "Gemini AI", "Sending image to Gemini");
     await tryUpdateLcd("Classifying", "Gemini AI");
 
-    const classification = await classifyImage(image.base64, image.mime);
+    const classification = await classifyWithAiReview(image.base64, image.mime);
     const category = classification.category;
     latestRun.category = category;
     latestRun.confidenceLevel = classification.confidenceLevel;
     latestRun.confidenceScore = classification.confidenceScore;
     latestRun.rationale = classification.rationale;
+    latestRun.gemini = classification.gemini;
+    latestRun.edgeImpulse = classification.edgeImpulse;
+    latestRun.aiDecision = classification.decision;
     latestRun.message = `Classified as ${category}`;
     latestRun.summaryEntry = createClassificationRecord({
-      aiModel: GEMINI_MODEL,
+      aiModel: classification.aiModel,
       classification: category,
       imageDataUrl: latestRun.imageDataUrl,
       confidenceLevel: classification.confidenceLevel,
       confidenceScore: classification.confidenceScore,
-      rationale: classification.rationale
+      rationale: classification.rationale,
+      geminiConfidenceLevel: classification.gemini?.confidenceLevel,
+      geminiConfidenceScore: classification.gemini?.confidenceScore,
+      edgeImpulseConfidenceLevel: classification.edgeImpulse?.confidenceLevel,
+      edgeImpulseConfidenceScore: classification.edgeImpulse?.confidenceScore
     });
-
     await setProgress("Classified", `${category} ${formatConfidenceSummary(classification)}`, classification.rationale || `Gemini classified the item as ${category}`);
     await tryUpdateLcd("AI RESULT", category);
 
-    await sortAndOpenForCategory(category, sorterSettings);
+    const sortResult = await sortAndOpenForCategory(category, sorterSettings);
 
     latestRun.status = "complete";
-    latestRun.message = `Classified as ${category}; sorted and returned home`;
-    await setProgress("Complete", category, "Classification complete, lid closed, wheel returned home");
-    await tryUpdateLcd("Ready", "Garbage Home");
+    latestRun.message = sortResult.skipped
+      ? `Classified as ${category}; manual review needed`
+      : `Classified as ${category}; sorted and returned home`;
+    await setProgress(
+      "Complete",
+      category,
+      sortResult.skipped
+        ? "Unknown item held for manual review; no bin movement or lid opening"
+        : "Classification complete, lid closed, wheel returned home"
+    );
+    if (!sortResult.skipped) {
+      await tryUpdateLcd("Ready", "Garbage Home");
+    }
     broadcast("snapshot", latestRun);
 
     res.json({
@@ -225,18 +237,7 @@ app.post("/api/classify-upload", async (req, res) => {
 });
 app.post("/api/run-classification", async (_req, res) => {
   const runId = `run-${Date.now()}`;
-  latestRun = {
-    id: runId,
-    status: "running",
-    category: null,
-    confidenceLevel: null,
-    confidenceScore: null,
-    rationale: null,
-    summaryEntry: null,
-    imageDataUrl: null,
-    steps: [],
-    message: "Starting"
-  };
+  latestRun = createRunState(runId);
 
   broadcast("snapshot", latestRun);
 
@@ -251,31 +252,47 @@ app.post("/api/run-classification", async (_req, res) => {
     await setProgress("Classifying", "Gemini AI", "Sending image to Gemini");
     await tryUpdateLcd("Classifying", "Gemini AI");
 
-    const classification = await classifyImage(image.base64, image.mime);
+    const classification = await classifyWithAiReview(image.base64, image.mime);
     const category = classification.category;
     latestRun.category = category;
     latestRun.confidenceLevel = classification.confidenceLevel;
     latestRun.confidenceScore = classification.confidenceScore;
     latestRun.rationale = classification.rationale;
+    latestRun.gemini = classification.gemini;
+    latestRun.edgeImpulse = classification.edgeImpulse;
+    latestRun.aiDecision = classification.decision;
     latestRun.message = `Classified as ${category}`;
     latestRun.summaryEntry = createClassificationRecord({
-      aiModel: GEMINI_MODEL,
+      aiModel: classification.aiModel,
       classification: category,
       imageDataUrl: latestRun.imageDataUrl,
       confidenceLevel: classification.confidenceLevel,
       confidenceScore: classification.confidenceScore,
-      rationale: classification.rationale
+      rationale: classification.rationale,
+      geminiConfidenceLevel: classification.gemini?.confidenceLevel,
+      geminiConfidenceScore: classification.gemini?.confidenceScore,
+      edgeImpulseConfidenceLevel: classification.edgeImpulse?.confidenceLevel,
+      edgeImpulseConfidenceScore: classification.edgeImpulse?.confidenceScore
     });
-
     await setProgress("Classified", `${category} ${formatConfidenceSummary(classification)}`, classification.rationale || `Gemini classified the item as ${category}`);
     await tryUpdateLcd("AI RESULT", category);
 
-    await sortAndOpenForCategory(category);
+    const sortResult = await sortAndOpenForCategory(category);
 
     latestRun.status = "complete";
-    latestRun.message = `Classified as ${category}; sorted and returned home`;
-    await setProgress("Complete", category, "Classification complete, lid closed, wheel returned home");
-    await tryUpdateLcd("Ready", "Garbage Home");
+    latestRun.message = sortResult.skipped
+      ? `Classified as ${category}; manual review needed`
+      : `Classified as ${category}; sorted and returned home`;
+    await setProgress(
+      "Complete",
+      category,
+      sortResult.skipped
+        ? "Unknown item held for manual review; no bin movement or lid opening"
+        : "Classification complete, lid closed, wheel returned home"
+    );
+    if (!sortResult.skipped) {
+      await tryUpdateLcd("Ready", "Garbage Home");
+    }
     broadcast("snapshot", latestRun);
 
     res.json({
@@ -356,15 +373,42 @@ function initClassificationDb() {
       image_data_url TEXT,
       confidence_level TEXT,
       confidence_score REAL,
+      gemini_confidence_level TEXT,
+      gemini_confidence_score REAL,
+      edge_impulse_confidence_level TEXT,
+      edge_impulse_confidence_score REAL,
       rationale TEXT
     )
   `);
+  ensureClassificationColumns();
+}
+
+function ensureClassificationColumns() {
+  const existingColumns = new Set(
+    classificationDb.prepare("PRAGMA table_info(classifications)").all().map(column => column.name)
+  );
+  const additions = [
+    ["gemini_confidence_level", "gemini_confidence_level TEXT"],
+    ["gemini_confidence_score", "gemini_confidence_score REAL"],
+    ["edge_impulse_confidence_level", "edge_impulse_confidence_level TEXT"],
+    ["edge_impulse_confidence_score", "edge_impulse_confidence_score REAL"]
+  ];
+
+  for (const [name, ddl] of additions) {
+    if (!existingColumns.has(name)) {
+      classificationDb.exec(`ALTER TABLE classifications ADD COLUMN ${ddl}`);
+    }
+  }
+}
+
+function classificationSelectFields() {
+  return `id, created_at, updated_at, ai_model, classification, image_data_url, confidence_level, confidence_score, gemini_confidence_level, gemini_confidence_score, edge_impulse_confidence_level, edge_impulse_confidence_score, rationale`;
 }
 
 function listClassificationRecords() {
   return classificationDb
     .prepare(`
-      SELECT id, created_at, updated_at, ai_model, classification, image_data_url, confidence_level, confidence_score, rationale
+      SELECT ${classificationSelectFields()}
       FROM classifications
       ORDER BY datetime(created_at) DESC, id DESC
     `)
@@ -376,7 +420,7 @@ function getClassificationRecord(id) {
   const entryId = normalizeEntryId(id);
   const row = classificationDb
     .prepare(`
-      SELECT id, created_at, updated_at, ai_model, classification, image_data_url, confidence_level, confidence_score, rationale
+      SELECT ${classificationSelectFields()}
       FROM classifications
       WHERE id = ?
     `)
@@ -385,18 +429,37 @@ function getClassificationRecord(id) {
 }
 
 function createClassificationRecord(data) {
+  const finalScore = normalizeConfidenceScore(data.confidenceScore);
+  const geminiScore = normalizeConfidenceScore(data.geminiConfidenceScore ?? data.confidenceScore);
+  const edgeScore = normalizeConfidenceScore(data.edgeImpulseConfidenceScore);
   const result = classificationDb
     .prepare(`
-      INSERT INTO classifications (created_at, ai_model, classification, image_data_url, confidence_level, confidence_score, rationale)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO classifications (
+        created_at,
+        ai_model,
+        classification,
+        image_data_url,
+        confidence_level,
+        confidence_score,
+        gemini_confidence_level,
+        gemini_confidence_score,
+        edge_impulse_confidence_level,
+        edge_impulse_confidence_score,
+        rationale
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       new Date().toISOString(),
       String(data.aiModel || GEMINI_MODEL),
       normalizeCategory(data.classification),
       String(data.imageDataUrl || ""),
-      normalizeConfidenceLevel(data.confidenceLevel, data.confidenceScore),
-      normalizeConfidenceScore(data.confidenceScore),
+      normalizeConfidenceLevel(data.confidenceLevel, finalScore),
+      finalScore,
+      normalizeOptionalConfidenceLevel(data.geminiConfidenceLevel, geminiScore),
+      geminiScore,
+      normalizeOptionalConfidenceLevel(data.edgeImpulseConfidenceLevel, edgeScore),
+      edgeScore,
       normalizeRationale(data.rationale)
     );
 
@@ -415,11 +478,23 @@ function updateClassificationRecord(id, body) {
   const nextClassification = body.classification === undefined
     ? current.classification
     : normalizeCategory(body.classification);
+  const nextGeminiScore = body.geminiConfidenceScore === undefined
+    ? current.geminiConfidenceScore
+    : normalizeConfidenceScore(body.geminiConfidenceScore);
+  const nextGeminiLevel = body.geminiConfidenceLevel === undefined
+    ? current.geminiConfidenceLevel
+    : normalizeOptionalConfidenceLevel(body.geminiConfidenceLevel, nextGeminiScore);
+  const nextEdgeScore = body.edgeImpulseConfidenceScore === undefined
+    ? current.edgeImpulseConfidenceScore
+    : normalizeConfidenceScore(body.edgeImpulseConfidenceScore);
+  const nextEdgeLevel = body.edgeImpulseConfidenceLevel === undefined
+    ? current.edgeImpulseConfidenceLevel
+    : normalizeOptionalConfidenceLevel(body.edgeImpulseConfidenceLevel, nextEdgeScore);
   const nextScore = body.confidenceScore === undefined
-    ? current.confidenceScore
+    ? nextGeminiScore
     : normalizeConfidenceScore(body.confidenceScore);
   const nextLevel = body.confidenceLevel === undefined
-    ? current.confidenceLevel
+    ? (nextGeminiLevel || current.confidenceLevel)
     : normalizeConfidenceLevel(body.confidenceLevel, nextScore);
   const nextRationale = body.rationale === undefined
     ? current.rationale
@@ -428,10 +503,21 @@ function updateClassificationRecord(id, body) {
   classificationDb
     .prepare(`
       UPDATE classifications
-      SET updated_at = ?, classification = ?, confidence_level = ?, confidence_score = ?, rationale = ?
+      SET updated_at = ?, classification = ?, confidence_level = ?, confidence_score = ?, gemini_confidence_level = ?, gemini_confidence_score = ?, edge_impulse_confidence_level = ?, edge_impulse_confidence_score = ?, rationale = ?
       WHERE id = ?
     `)
-    .run(new Date().toISOString(), nextClassification, nextLevel, nextScore, nextRationale, entryId);
+    .run(
+      new Date().toISOString(),
+      nextClassification,
+      nextLevel,
+      nextScore,
+      nextGeminiLevel,
+      nextGeminiScore,
+      nextEdgeLevel,
+      nextEdgeScore,
+      nextRationale,
+      entryId
+    );
 
   return getClassificationRecord(entryId);
 }
@@ -447,6 +533,9 @@ function deleteClassificationRecord(id) {
 }
 
 function classificationRowToJson(row) {
+  const finalScore = nullableNumber(row.confidence_score);
+  const geminiScore = nullableNumber(row.gemini_confidence_score) ?? finalScore;
+  const edgeScore = nullableNumber(row.edge_impulse_confidence_score);
   return {
     id: Number(row.id),
     createdAt: row.created_at,
@@ -455,9 +544,17 @@ function classificationRowToJson(row) {
     classification: row.classification,
     imageDataUrl: row.image_data_url,
     confidenceLevel: row.confidence_level,
-    confidenceScore: row.confidence_score === null || row.confidence_score === undefined ? null : Number(row.confidence_score),
+    confidenceScore: finalScore,
+    geminiConfidenceLevel: row.gemini_confidence_level || row.confidence_level,
+    geminiConfidenceScore: geminiScore,
+    edgeImpulseConfidenceLevel: row.edge_impulse_confidence_level || null,
+    edgeImpulseConfidenceScore: edgeScore,
     rationale: row.rationale || ""
   };
+}
+
+function nullableNumber(value) {
+  return value === null || value === undefined ? null : Number(value);
 }
 
 function normalizeEntryId(value) {
@@ -696,6 +793,557 @@ function getCameraJpegWithCurl(urlString) {
   });
 }
 
+function createRunState(id, status = "running", message = "Starting") {
+  return {
+    id,
+    status,
+    category: null,
+    confidenceLevel: null,
+    confidenceScore: null,
+    rationale: null,
+    summaryEntry: null,
+    imageDataUrl: null,
+    gemini: null,
+    edgeImpulse: null,
+    aiDecision: null,
+    steps: [],
+    message
+  };
+}
+
+function getEdgeImpulseConfigStatus() {
+  return {
+    mode: EDGE_IMPULSE_MODE,
+    enabled: EDGE_IMPULSE_MODE !== "disabled",
+    required: EDGE_IMPULSE_REQUIRED,
+    decisionPolicy: EDGE_IMPULSE_DECISION_POLICY,
+    hasApiKey: Boolean(EDGE_IMPULSE_API_KEY),
+    projectConfigured: Boolean(EDGE_IMPULSE_PROJECT_ID),
+    impulseConfigured: Boolean(EDGE_IMPULSE_IMPULSE_ID),
+    offlineConfigured: Boolean(EDGE_IMPULSE_OFFLINE_URL),
+    label: EDGE_IMPULSE_LABEL,
+    confidenceThreshold: EDGE_IMPULSE_CONFIDENCE_THRESHOLD,
+    reviewUploadEnabled: EDGE_IMPULSE_REVIEW_UPLOAD,
+    reviewCategory: EDGE_IMPULSE_REVIEW_CATEGORY,
+    reviewUrl: edgeImpulseStudioDataUrl()
+  };
+}
+
+async function classifyWithAiReview(base64Image, mimeType = "image/jpeg") {
+  const gemini = await classifyImage(base64Image, mimeType);
+  await setProgress(
+    "Gemini Result",
+    `${gemini.category} ${formatConfidenceSummary(gemini)}`,
+    gemini.rationale || `Gemini selected ${gemini.category}`
+  );
+
+  let edgeImpulse;
+  if (shouldRunEdgeImpulseForGemini(gemini)) {
+    await setProgress(
+      "Low Confidence",
+      "Edge Impulse",
+      `Gemini confidence ${formatConfidenceValue(gemini.confidenceScore)} is at or below ${EDGE_IMPULSE_CONFIDENCE_THRESHOLD}%; checking Edge Impulse`
+    );
+    edgeImpulse = await classifyWithEdgeImpulseReview(base64Image, mimeType);
+    if (edgeImpulse.status === "ok") {
+      await setProgress(
+        "Edge Impulse",
+        `${edgeImpulse.category} ${formatConfidenceSummary(edgeImpulse)}`,
+        edgeImpulse.rationale || `${EDGE_IMPULSE_LABEL} selected ${edgeImpulse.category}`
+      );
+    } else {
+      await setProgress(
+        "Edge Impulse",
+        edgeImpulse.status === "disabled" ? "Disabled" : edgeImpulse.status === "skipped" ? "Skipped" : edgeImpulse.status === "needs-review" ? "Review needed" : "Unavailable",
+        edgeImpulse.message
+      );
+    }
+  } else {
+    edgeImpulse = edgeImpulseStatus(
+      "skipped",
+      `Gemini confidence ${formatConfidenceValue(gemini.confidenceScore)} is above ${EDGE_IMPULSE_CONFIDENCE_THRESHOLD}%; using Gemini only`,
+      "confidence-threshold"
+    );
+    await setProgress("Edge Impulse", "Not needed", edgeImpulse.message);
+  }
+
+  const decision = combineAiDecision(gemini, edgeImpulse);
+  await setProgress("AI Decision", `${decision.category} ${formatConfidenceSummary(decision)}`, decision.rationale);
+
+  return {
+    category: decision.category,
+    confidenceLevel: decision.confidenceLevel,
+    confidenceScore: decision.confidenceScore,
+    rationale: decision.rationale,
+    aiModel: buildAiModelLabel(edgeImpulse, decision),
+    gemini,
+    edgeImpulse,
+    decision
+  };
+}
+
+async function classifyWithEdgeImpulseReview(base64Image, mimeType = "image/jpeg") {
+  if (EDGE_IMPULSE_MODE === "disabled") {
+    return edgeImpulseStatus("disabled", "Edge Impulse is disabled by EDGE_IMPULSE_MODE");
+  }
+
+  try {
+    if (EDGE_IMPULSE_API_KEY && EDGE_IMPULSE_PROJECT_ID) {
+      const manualReview = await findEdgeImpulseManualReviewLabel(base64Image, mimeType);
+      if (manualReview?.category) {
+        return {
+          status: "ok",
+          mode: "manual",
+          ...manualReview
+        };
+      }
+    }
+
+    if ((EDGE_IMPULSE_MODE === "offline" || EDGE_IMPULSE_MODE === "auto") && EDGE_IMPULSE_OFFLINE_URL) {
+      return {
+        status: "ok",
+        mode: "offline",
+        ...(await classifyWithEdgeImpulseOffline(base64Image, mimeType))
+      };
+    }
+
+    if (EDGE_IMPULSE_MODE === "offline") {
+      return edgeImpulseStatus("skipped", "Set EDGE_IMPULSE_OFFLINE_URL to use the exported offline model endpoint");
+    }
+
+    if (!EDGE_IMPULSE_API_KEY || !EDGE_IMPULSE_PROJECT_ID) {
+      return edgeImpulseStatus("skipped", "Set EDGE_IMPULSE_PROJECT_ID to enable Edge Impulse cloud verification");
+    }
+
+    return {
+      status: "ok",
+      mode: "cloud",
+      ...(await classifyWithEdgeImpulseCloud(base64Image, mimeType))
+    };
+  } catch (error) {
+    if (error?.isEdgeImpulseUnknownLabel) {
+      const review = await uploadEdgeImpulseUnknownReviewSample(base64Image, mimeType, error).catch(uploadError => ({
+        uploaded: false,
+        message: `Review upload failed: ${uploadError.message || String(uploadError)}`
+      }));
+      return edgeImpulseStatus(
+        "needs-review",
+        review.manualLabel
+          ? `Using Edge Impulse manual label ${review.manualLabel}`
+          : `${error.message}. ${review.message}`,
+        "edge-unknown",
+        {
+          confidenceLevel: null,
+          confidenceScore: null,
+          rawLabel: error.rawLabel,
+          rawScore: error.score,
+          review
+        }
+      );
+    }
+
+    if (EDGE_IMPULSE_REQUIRED) {
+      throw new Error(`${EDGE_IMPULSE_LABEL} failed: ${error.message || String(error)}`);
+    }
+    return edgeImpulseStatus("error", error.message || String(error));
+  }
+}
+
+async function classifyWithEdgeImpulseCloud(base64Image, mimeType = "image/jpeg") {
+  const endpoint = new URL(`https://studio.edgeimpulse.com/v1/api/${encodeURIComponent(EDGE_IMPULSE_PROJECT_ID)}/classify/image`);
+  if (EDGE_IMPULSE_IMPULSE_ID) {
+    endpoint.searchParams.set("impulseId", EDGE_IMPULSE_IMPULSE_ID);
+  }
+
+  const imageBuffer = Buffer.from(base64Image, "base64");
+  const imageName = mimeType === "image/png" ? "capture.png" : "capture.jpg";
+  const form = new FormData();
+  form.append("image", new Blob([imageBuffer], { type: mimeType }), imageName);
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "x-api-key": EDGE_IMPULSE_API_KEY
+    },
+    body: form,
+    signal: AbortSignal.timeout(60000)
+  });
+
+  const bodyText = await response.text();
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${bodyText.slice(0, 400)}`);
+  }
+
+  return parseEdgeImpulseClassificationBody(parseJsonResponse(bodyText, EDGE_IMPULSE_LABEL), "Edge Impulse cloud");
+}
+
+async function classifyWithEdgeImpulseOffline(base64Image, mimeType = "image/jpeg") {
+  const imageDataUrl = `data:${mimeType};base64,${base64Image}`;
+  const response = await fetch(EDGE_IMPULSE_OFFLINE_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ imageDataUrl, base64: base64Image, mime: mimeType }),
+    signal: AbortSignal.timeout(30000)
+  });
+
+  const bodyText = await response.text();
+  if (!response.ok) {
+    throw new Error(`offline HTTP ${response.status} ${bodyText.slice(0, 400)}`);
+  }
+
+  return parseEdgeImpulseClassificationBody(parseJsonResponse(bodyText, "Edge Impulse offline"), "Edge Impulse offline");
+}
+
+function parseJsonResponse(bodyText, sourceName) {
+  try {
+    return JSON.parse(bodyText);
+  } catch (_error) {
+    throw new Error(`${sourceName} returned invalid JSON: ${bodyText.slice(0, 300)}`);
+  }
+}
+
+function parseEdgeImpulseClassificationBody(body, sourceName) {
+  if (body?.success === false) {
+    throw new Error(body.error || `${sourceName} returned success=false`);
+  }
+
+  const directValue = body?.category ?? body?.classification ?? body?.label ?? body?.prediction;
+  if (typeof directValue === "string") {
+    const directCategory = categoryFromEdgeImpulseLabel(directValue);
+    if (!directCategory) {
+      throw edgeImpulseUnknownLabelError(sourceName, directValue, body?.confidenceScore ?? body?.score ?? body?.confidence);
+    }
+
+    const direct = normalizeClassificationResult({
+      category: directCategory,
+      confidenceScore: body?.confidenceScore ?? body?.score ?? body?.confidence,
+      rationale: `${sourceName} label ${directValue}`
+    }, directCategory);
+    direct.rawLabel = directValue;
+    direct.source = sourceName;
+    return direct;
+  }
+
+  const rawCandidates = collectEdgeImpulseCandidates(body)
+    .sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0));
+
+  if (!rawCandidates.length) {
+    throw new Error(`${sourceName} returned no labels`);
+  }
+
+  const top = rawCandidates[0];
+  const topCategory = categoryFromEdgeImpulseLabel(top.label);
+  if (!topCategory) {
+    throw edgeImpulseUnknownLabelError(sourceName, top.label, top.score);
+  }
+
+  const result = normalizeClassificationResult({
+    category: topCategory,
+    confidenceScore: top.score,
+    rationale: `${sourceName} label ${top.label}`
+  }, topCategory);
+  result.rawLabel = top.label;
+  result.source = sourceName;
+  return result;
+}
+
+function edgeImpulseUnknownLabelError(sourceName, label, score) {
+  const normalizedScore = normalizeConfidenceScore(score);
+  const scoreText = normalizedScore === null ? "no score" : `${normalizedScore}%`;
+  const error = new Error(`${sourceName} top label "${label}" (${scoreText}) is not Garbage, Recycle, or Organic`);
+  error.isEdgeImpulseUnknownLabel = true;
+  error.rawLabel = String(label || "").trim();
+  error.score = normalizedScore;
+  error.sourceName = sourceName;
+  return error;
+}
+
+async function findEdgeImpulseManualReviewLabel(base64Image, mimeType = "image/jpeg") {
+  if (!EDGE_IMPULSE_API_KEY || !EDGE_IMPULSE_PROJECT_ID) {
+    return null;
+  }
+
+  const fingerprint = edgeImpulseReviewFingerprint(base64Image);
+  const endpoint = new URL(`https://studio.edgeimpulse.com/v1/api/${encodeURIComponent(EDGE_IMPULSE_PROJECT_ID)}/raw-data`);
+  endpoint.searchParams.set("category", EDGE_IMPULSE_REVIEW_CATEGORY);
+  endpoint.searchParams.set("filename", fingerprint);
+  endpoint.searchParams.set("limit", "20");
+  endpoint.searchParams.set("excludeSensors", "true");
+
+  const response = await fetch(endpoint, {
+    headers: {
+      Accept: "application/json",
+      "x-api-key": EDGE_IMPULSE_API_KEY
+    },
+    signal: AbortSignal.timeout(20000)
+  });
+
+  const bodyText = await response.text();
+  if (!response.ok) {
+    return null;
+  }
+
+  const body = parseJsonResponse(bodyText, "Edge Impulse sample lookup");
+  const samples = Array.isArray(body?.samples) ? body.samples : [];
+  for (const sample of samples) {
+    const label = sample?.label;
+    const category = categoryFromEdgeImpulseLabel(label);
+    if (category) {
+      return {
+        category,
+        confidenceLevel: "High",
+        confidenceScore: 100,
+        rationale: `${EDGE_IMPULSE_LABEL} manual label ${label}`,
+        rawLabel: label,
+        source: `${EDGE_IMPULSE_LABEL} manual label`,
+        reviewSampleId: sample.id,
+        reviewFilename: sample.filename,
+        reviewUrl: edgeImpulseStudioDataUrl()
+      };
+    }
+  }
+
+  return null;
+}
+
+async function uploadEdgeImpulseUnknownReviewSample(base64Image, mimeType = "image/jpeg", unknownError = null) {
+  if (!EDGE_IMPULSE_REVIEW_UPLOAD) {
+    return { uploaded: false, message: "Review upload is disabled by EDGE_IMPULSE_REVIEW_UPLOAD" };
+  }
+  if (!EDGE_IMPULSE_API_KEY || !EDGE_IMPULSE_PROJECT_ID) {
+    return { uploaded: false, message: "Set Edge Impulse API key and project ID to upload review samples" };
+  }
+
+  const manualReview = await findEdgeImpulseManualReviewLabel(base64Image, mimeType);
+  if (manualReview?.category) {
+    return { uploaded: false, manualLabel: manualReview.category, message: `Found existing manual label ${manualReview.category}` };
+  }
+
+  const imageBuffer = Buffer.from(base64Image, "base64");
+  const fingerprint = edgeImpulseReviewFingerprint(base64Image);
+  const imageName = edgeImpulseReviewFilename(fingerprint, mimeType);
+  const form = new FormData();
+  form.append("data", new Blob([imageBuffer], { type: mimeType }), imageName);
+
+  const endpoint = `https://ingestion.edgeimpulse.com/api/${EDGE_IMPULSE_REVIEW_CATEGORY}/files`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "x-api-key": EDGE_IMPULSE_API_KEY,
+      "x-no-label": "1",
+      "x-disallow-duplicates": "1"
+    },
+    body: form,
+    signal: AbortSignal.timeout(60000)
+  });
+
+  const bodyText = (await response.text()).trim();
+  if (!response.ok && !/duplicate/i.test(bodyText)) {
+    throw new Error(`HTTP ${response.status} ${bodyText.slice(0, 300)}`);
+  }
+
+  const rawLabel = unknownError?.rawLabel ? ` Edge Impulse returned "${unknownError.rawLabel}".` : "";
+  return {
+    uploaded: response.ok,
+    duplicate: !response.ok,
+    filename: imageName,
+    fingerprint,
+    response: bodyText,
+    reviewUrl: edgeImpulseStudioDataUrl(),
+    message: `${rawLabel} Uploaded review sample ${imageName}. Label it in Edge Impulse as Garbage, Recycle, or Organic, then run this same image again.`.trim()
+  };
+}
+
+function edgeImpulseReviewFingerprint(base64Image) {
+  return crypto.createHash("sha256").update(Buffer.from(base64Image, "base64")).digest("hex").slice(0, 16);
+}
+
+function edgeImpulseReviewFilename(fingerprint, mimeType = "image/jpeg") {
+  const extension = mimeType === "image/png" ? "png" : "jpg";
+  return `waste-sorter-review-${fingerprint}.${extension}`;
+}
+
+function edgeImpulseStudioDataUrl() {
+  return EDGE_IMPULSE_PROJECT_ID
+    ? `https://studio.edgeimpulse.com/studio/${encodeURIComponent(EDGE_IMPULSE_PROJECT_ID)}/acquisition/${EDGE_IMPULSE_REVIEW_CATEGORY}`
+    : "";
+}
+function collectEdgeImpulseCandidates(value) {
+  const candidates = [];
+
+  function add(label, score) {
+    const cleanLabel = String(label || "").trim();
+    if (!cleanLabel) return;
+    candidates.push({ label: cleanLabel, score: normalizeConfidenceScore(score) });
+  }
+
+  function scanMap(map) {
+    if (!map || typeof map !== "object" || Array.isArray(map)) return;
+    for (const [label, score] of Object.entries(map)) {
+      if (typeof score === "number") {
+        add(label, score);
+      } else if (score && typeof score === "object") {
+        add(label, score.value ?? score.score ?? score.confidence);
+      }
+    }
+  }
+
+  function scanArray(items) {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      add(item?.label ?? item?.category ?? item?.classification ?? item?.name, item?.score ?? item?.value ?? item?.confidence);
+    }
+  }
+
+  scanMap(value?.result);
+  scanMap(value?.classification);
+  scanMap(value?.classifications);
+  scanArray(value?.results);
+  scanArray(value?.boundingBoxes);
+  scanArray(value?.predictions);
+  scanArray(value?.outputs);
+  return candidates;
+}
+
+function combineAiDecision(gemini, edgeImpulse) {
+  const edgeOk = edgeImpulse?.status === "ok";
+  if (!edgeOk) {
+    if (shouldUseUnknownDecision(gemini, edgeImpulse)) {
+      return {
+        category: "Unknown",
+        confidenceLevel: "Low",
+        confidenceScore: normalizeConfidenceScore(gemini?.confidenceScore),
+        agreement: "unknown",
+        rationale: buildUnknownDecisionRationale(gemini, edgeImpulse)
+      };
+    }
+
+    return {
+      category: gemini.category,
+      confidenceLevel: gemini.confidenceLevel,
+      confidenceScore: gemini.confidenceScore,
+      agreement: "gemini-only",
+      rationale: `Gemini selected ${gemini.category}; Edge Impulse ${edgeImpulse?.message || "not configured"}.`
+    };
+  }
+
+  if (gemini.category === "Unknown" && edgeImpulse.category !== "Unknown") {
+    return {
+      category: edgeImpulse.category,
+      confidenceLevel: edgeImpulse.confidenceLevel,
+      confidenceScore: edgeImpulse.confidenceScore,
+      agreement: "edge-when-gemini-unknown",
+      rationale: `Gemini returned Unknown; Edge Impulse selected ${edgeImpulse.category}.`
+    };
+  }
+
+  if (edgeImpulse.category === gemini.category) {
+    return {
+      category: gemini.category,
+      confidenceLevel: gemini.confidenceLevel,
+      confidenceScore: gemini.confidenceScore,
+      agreement: "agree",
+      rationale: `Gemini and Edge Impulse agree on ${gemini.category}; scores shown separately.`
+    };
+  }
+
+  if (EDGE_IMPULSE_DECISION_POLICY === "require-agreement") {
+    throw new Error(`AI disagreement: Gemini=${gemini.category}, Edge Impulse=${edgeImpulse.category}`);
+  }
+
+  const selected = EDGE_IMPULSE_DECISION_POLICY === "edge-primary" ? edgeImpulse : gemini;
+  const selectedName = selected === edgeImpulse ? "Edge Impulse" : "Gemini";
+  const selectedScore = normalizeConfidenceScore(selected.confidenceScore ?? 45);
+  return {
+    category: selected.category,
+    confidenceLevel: "Low",
+    confidenceScore: selectedScore,
+    agreement: "disagree",
+    rationale: `Dual model validation mismatch: Gemini ${gemini.category}, Edge Impulse ${edgeImpulse.category}; using ${selectedName} primary.`
+  };
+}
+
+function shouldUseUnknownDecision(gemini, edgeImpulse) {
+  if (gemini?.category === "Unknown") {
+    return true;
+  }
+
+  return edgeImpulse?.reason === "edge-unknown" && shouldRunEdgeImpulseForGemini(gemini);
+}
+
+function buildUnknownDecisionRationale(gemini, edgeImpulse) {
+  if (edgeImpulse?.reason === "edge-unknown") {
+    const rawLabel = edgeImpulse.rawLabel ? `Edge Impulse returned ${edgeImpulse.rawLabel}` : "Edge Impulse returned Unknown";
+    return `Gemini confidence was low and ${rawLabel}; marked Unknown for manual review.`;
+  }
+
+  return `Gemini returned Unknown; ${edgeImpulse?.message || "Edge Impulse did not provide a sorter category"}.`;
+}
+function shouldRunEdgeImpulseForGemini(gemini) {
+  const score = normalizeConfidenceScore(gemini?.confidenceScore);
+  return gemini?.category === "Unknown" || score === null || score <= EDGE_IMPULSE_CONFIDENCE_THRESHOLD;
+}
+
+function formatConfidenceValue(value) {
+  const score = normalizeConfidenceScore(value);
+  return score === null ? "not reported" : `${score}%`;
+}
+
+function edgeImpulseStatus(status, message, reason = "", extra = {}) {
+  return {
+    status,
+    reason,
+    mode: EDGE_IMPULSE_MODE,
+    category: null,
+    confidenceLevel: null,
+    confidenceScore: null,
+    rationale: "",
+    message,
+    ...extra
+  };
+}
+
+function buildAiModelLabel(edgeImpulse = null, decision = null) {
+  const parts = [`Gemini ${GEMINI_MODEL}`];
+  const edgeStatus = edgeImpulse?.status;
+  const edgeMode = edgeImpulse?.mode || EDGE_IMPULSE_MODE;
+  const usedGeminiOnly = edgeImpulse?.reason === "confidence-threshold";
+  if (EDGE_IMPULSE_MODE !== "disabled" && !usedGeminiOnly) {
+    const defaultEdgeLabel = edgeImpulse
+      ? `${EDGE_IMPULSE_LABEL} ${edgeMode}${edgeStatus ? ` ${edgeStatus}` : ""}`
+      : `${EDGE_IMPULSE_LABEL} if Gemini <= ${EDGE_IMPULSE_CONFIDENCE_THRESHOLD}%`;
+    parts.push(defaultEdgeLabel);
+  }
+  if (decision?.agreement && !usedGeminiOnly) {
+    parts.push(`decision:${decision.agreement}`);
+  }
+  return parts.join(" + ");
+}
+
+function normalizeEdgeImpulseReviewCategory(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return ["training", "testing"].includes(text) ? text : "training";
+}
+function normalizeEdgeImpulseMode(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (["auto", "cloud", "offline", "disabled"].includes(text)) return text;
+  return "auto";
+}
+
+function normalizeDecisionPolicy(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (["gemini-primary", "edge-primary", "require-agreement"].includes(text)) return text;
+  return "gemini-primary";
+}
+
+function parseBool(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return /^(1|true|yes|on)$/i.test(String(value).trim());
+}
 async function classifyImage(base64Image, mimeType = "image/jpeg") {
   if (GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
     throw new Error("Set GEMINI_API_KEY before running classification");
@@ -729,7 +1377,7 @@ async function classifyImage(base64Image, mimeType = "image/jpeg") {
         properties: {
           category: {
             type: "STRING",
-            enum: ["Garbage", "Recycle", "Organic"]
+            enum: ["Garbage", "Recycle", "Organic", "Unknown"]
           },
           confidenceLevel: {
             type: "STRING",
@@ -797,6 +1445,17 @@ function normalizeWheelDirection(value, fallback) {
   return text === "forward" || text === "reverse" ? text : fallback;
 }
 function sortTargetForCategory(category, sorterSettings = normalizeSorterSettings()) {
+  if (category === "Unknown") {
+    return {
+      label: "Unknown",
+      side: null,
+      nudges: 0,
+      returnNudges: 0,
+      lcd: "Manual Review",
+      skipSort: true
+    };
+  }
+
   if (category === "Recycle") {
     return {
       label: "Blue Left",
@@ -829,6 +1488,12 @@ function sortTargetForCategory(category, sorterSettings = normalizeSorterSetting
 async function sortAndOpenForCategory(category, sorterSettings = normalizeSorterSettings()) {
   const target = sortTargetForCategory(category, sorterSettings);
 
+  if (target.skipSort) {
+    await setProgress("Needs Review", "Unknown", "No bin movement or lid opening for Unknown classification");
+    await tryUpdateLcd("AI RESULT", "Unknown");
+    return { skipped: true, target };
+  }
+
   if (target.side) {
     await setProgress("Aligning Bin", target.label, `${target.nudges} ${target.side} nudges from Garbage Home`);
     await tryUpdateLcd("Aligning Bin", target.lcd);
@@ -851,6 +1516,7 @@ async function sortAndOpenForCategory(category, sorterSettings = normalizeSorter
 
   await setProgress("Ready", "Garbage Home", "Wheel is ready at Garbage/Home for the next item");
   await tryUpdateLcd("Ready", "Garbage Home");
+  return { skipped: false, target };
 }
 
 async function moveWheelNudges(side, count, label, sorterSettings = normalizeSorterSettings()) {
@@ -968,12 +1634,13 @@ function normalizeClassificationResult(value, rawText = "") {
   const rawCategory = value?.category ?? value?.classification ?? value?.label ?? value?.type ?? value?.result ?? rawText;
   const category = normalizeCategory(rawCategory, rawText);
   const rawConfidence = value?.confidence;
-  const confidenceScore = normalizeConfidenceScore(
+  const rawScore = normalizeConfidenceScore(
     value?.confidenceScore ??
     value?.confidence_score ??
     value?.score ??
     (typeof rawConfidence === "number" ? rawConfidence : undefined)
   );
+  const confidenceScore = category === "Unknown" ? 0 : rawScore;
   let confidenceLevel = normalizeConfidenceLevel(
     value?.confidenceLevel ??
     value?.confidence_level ??
@@ -981,7 +1648,7 @@ function normalizeClassificationResult(value, rawText = "") {
     (typeof rawConfidence === "string" ? rawConfidence : undefined),
     confidenceScore
   );
-  if (!confidenceScore && /\b(unknown|unsure|uncertain|cannot determine)\b/i.test(String(rawCategory))) {
+  if (category === "Unknown" || !confidenceScore && /\b(unknown|unsure|uncertain|cannot determine)\b/i.test(String(rawCategory))) {
     confidenceLevel = "Low";
   }
 
@@ -1011,6 +1678,14 @@ function normalizeConfidenceScore(value) {
   }
 
   return Math.round(Math.min(100, Math.max(0, score)) * 10) / 10;
+}
+
+function normalizeOptionalConfidenceLevel(value, score = null) {
+  const normalizedScore = normalizeConfidenceScore(score);
+  if ((value === null || value === undefined || value === "") && normalizedScore === null) {
+    return null;
+  }
+  return normalizeConfidenceLevel(value, normalizedScore);
 }
 
 function normalizeConfidenceLevel(value, score = null) {
@@ -1054,17 +1729,37 @@ function normalizeCategory(value, rawText = "") {
     return fallback;
   }
 
-  const excerpt = String(value || rawText || "").replace(/[\r\n\t]+/g, " ").trim().slice(0, 180);
-  throw new Error(`Unknown category from Gemini: ${excerpt || "empty response"}`);
+  return "Unknown";
 }
 
+function categoryFromEdgeImpulseLabel(value) {
+  const text = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  if (!text || /\b(unknown|unsure|uncertain|background|noise|other)\b/.test(text)) {
+    return null;
+  }
+
+  if (/\b(garbage|trash|landfill|general waste|non recyclable|nonrecyclable|not recyclable)\b/.test(text)) {
+    return "Garbage";
+  }
+  if (/\b(organic|compost|compostable|food scrap|food waste|fruit|vegetable|plant matter|yard waste|green bin)\b/.test(text)) {
+    return "Organic";
+  }
+  if (/\b(recycle|recyclable|plastic|paper|cardboard|carton|metal|aluminum|aluminium|can|bottle|glass|tin|container|jar|cup|blue bin)\b/.test(text)) {
+    return "Recycle";
+  }
+
+  return null;
+}
 function categoryFromText(value) {
   const text = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
   if (!text) {
     return null;
   }
 
-  if (/\b(garbage|trash|landfill|general waste|non recyclable|nonrecyclable|not recyclable|other|unknown|unsure|uncertain)\b/.test(text) || text.includes("cannot determine")) {
+  if (/\b(unknown|unsure|uncertain|other|not sure|cannot classify)\b/.test(text) || text.includes("cannot determine")) {
+    return "Unknown";
+  }
+  if (/\b(garbage|trash|landfill|general waste|non recyclable|nonrecyclable|not recyclable)\b/.test(text)) {
     return "Garbage";
   }
   if (/\b(organic|compost|compostable|food scrap|food waste|fruit|vegetable|plant matter|yard waste|green bin)\b/.test(text)) {
@@ -1255,6 +1950,7 @@ app.listen(PORT, () => {
   console.log(`Legacy ESP32-CAM URL: ${CAMERA_CAPTURE_URL}`);
   console.log(`ESP32-S3 control: ${ESP32_S3_CONTROL_URL}`);
   console.log(`Gemini model: ${GEMINI_MODEL}`);
+  console.log(`Edge Impulse mode: ${EDGE_IMPULSE_MODE}; threshold: ${EDGE_IMPULSE_CONFIDENCE_THRESHOLD}%`);
 });
 
 function loadEnvFile(filePath) {

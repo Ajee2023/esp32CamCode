@@ -1,4 +1,4 @@
-.pio/build/esp32-s3-devkitc-1/lib58f/LiquidCrystal_I2C/LiquidCrystal_I2C.cpp.o: \
+.pio/build/esp32-s3-devkitc-1/lib7a0/LiquidCrystal_I2C/LiquidCrystal_I2C.cpp.o: \
  .pio/libdeps/esp32-s3-devkitc-1/LiquidCrystal_I2C/LiquidCrystal_I2C.cpp \
  .pio/libdeps/esp32-s3-devkitc-1/LiquidCrystal_I2C/LiquidCrystal_I2C.h \
  C:/Users/gopin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \

@@ -11,6 +11,7 @@ const cameraSelect = document.querySelector("#cameraSelect");
 const cameraRetryButton = document.querySelector("#cameraRetryButton");
 const photoUpload = document.querySelector("#photoUpload");
 const resultDisplay = document.querySelector("#resultDisplay");
+const aiModeLabel = document.querySelector("#aiModeLabel");
 const flowList = document.querySelector("#flowList");
 const cameraUrl = document.querySelector("#cameraUrl");
 const lcdLine1 = document.querySelector("#lcdLine1");
@@ -240,7 +241,7 @@ async function loadClassificationSummary(options = {}) {
   }
 
   summaryMessage.textContent = "Loading saved classifications";
-  summaryTableBody.innerHTML = `<tr><td colspan="8" class="empty-cell">Loading classification summary...</td></tr>`;
+  summaryTableBody.innerHTML = `<tr><td colspan="9" class="empty-cell">Loading classification summary...</td></tr>`;
 
   try {
     const response = await fetch("/api/classifications");
@@ -253,7 +254,7 @@ async function loadClassificationSummary(options = {}) {
     renderClassificationSummary(result.entries || []);
   } catch (error) {
     summaryMessage.textContent = "Summary load failed";
-    summaryTableBody.innerHTML = `<tr><td colspan="8" class="empty-cell error-text">${escapeHtml(error.message)}</td></tr>`;
+    summaryTableBody.innerHTML = `<tr><td colspan="9" class="empty-cell error-text">${escapeHtml(error.message)}</td></tr>`;
   }
 }
 
@@ -263,7 +264,7 @@ function renderClassificationSummary(entries) {
     : "No saved classifications yet";
 
   if (!entries.length) {
-    summaryTableBody.innerHTML = `<tr><td colspan="8" class="empty-cell">Run a classification to create the first summary row.</td></tr>`;
+    summaryTableBody.innerHTML = `<tr><td colspan="9" class="empty-cell">Run a classification to create the first summary row.</td></tr>`;
     return;
   }
 
@@ -274,7 +275,8 @@ function renderClassificationSummary(entries) {
       <td>${classificationSelect(entry.classification)}</td>
       <td>${entry.imageDataUrl ? `<img class="summary-thumb" src="${escapeHtml(entry.imageDataUrl)}" alt="Captured waste image" />` : `<span class="muted-text">No image</span>`}</td>
       <td>${confidenceLevelSelect(entry.confidenceLevel)}</td>
-      <td><input class="summary-input score-input" data-field="confidenceScore" type="number" min="0" max="100" step="0.1" value="${entry.confidenceScore ?? ""}" /></td>
+      <td><input class="summary-input score-input" data-field="geminiConfidenceScore" type="number" min="0" max="100" step="0.1" value="${entry.geminiConfidenceScore ?? entry.confidenceScore ?? ""}" /></td>
+      <td><input class="summary-input score-input" data-field="edgeImpulseConfidenceScore" type="number" min="0" max="100" step="0.1" value="${entry.edgeImpulseConfidenceScore ?? ""}" placeholder="n/a" /></td>
       <td><textarea class="summary-input rationale-input" data-field="rationale" rows="2">${escapeHtml(entry.rationale || "")}</textarea></td>
       <td>
         <div class="row-actions">
@@ -287,7 +289,7 @@ function renderClassificationSummary(entries) {
 }
 
 function classificationSelect(value) {
-  return `<select class="summary-input" data-field="classification">${["Garbage", "Recycle", "Organic"].map(option => `
+  return `<select class="summary-input" data-field="classification">${["Garbage", "Recycle", "Organic", "Unknown"].map(option => `
     <option value="${option}"${option === value ? " selected" : ""}>${option}</option>
   `).join("")}</select>`;
 }
@@ -324,24 +326,28 @@ async function loadClassificationChart(options = {}) {
 }
 
 function renderClassificationChart(entries) {
-  const categories = ["Garbage", "Recycle", "Organic"];
+  const categories = ["Garbage", "Recycle", "Organic", "Unknown"];
   const counts = Object.fromEntries(categories.map(category => [category, 0]));
-  const scores = [];
+  const geminiScores = [];
+  const edgeScores = [];
 
   for (const entry of entries) {
     if (counts[entry.classification] !== undefined) {
       counts[entry.classification] += 1;
     }
-    const score = Number(entry.confidenceScore);
-    if (Number.isFinite(score)) {
-      scores.push(score);
+    const geminiScore = Number(entry.geminiConfidenceScore ?? entry.confidenceScore);
+    if (Number.isFinite(geminiScore)) {
+      geminiScores.push(geminiScore);
+    }
+    const edgeScore = Number(entry.edgeImpulseConfidenceScore);
+    if (Number.isFinite(edgeScore)) {
+      edgeScores.push(edgeScore);
     }
   }
 
   const total = entries.length;
-  const average = scores.length
-    ? `${Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)}%`
-    : "n/a";
+  const averageGemini = averageScoreText(geminiScores);
+  const averageEdge = averageScoreText(edgeScores);
   const topCategory = categories.reduce((best, category) => counts[category] > counts[best] ? category : best, categories[0]);
   const latest = entries[0];
 
@@ -351,7 +357,8 @@ function renderClassificationChart(entries) {
 
   chartStats.innerHTML = [
     chartStatCard("Total Runs", String(total)),
-    chartStatCard("Average Confidence", average),
+    chartStatCard("Avg Gemini", averageGemini),
+    chartStatCard("Avg Edge", averageEdge),
     chartStatCard("Top Category", total ? topCategory : "n/a"),
     chartStatCard("Latest Result", latest ? `${latest.classification} (${formatDateTime(latest.createdAt)})` : "n/a")
   ].join("");
@@ -376,6 +383,12 @@ function renderClassificationChart(entries) {
   }).join("");
 }
 
+function averageScoreText(scores) {
+  return scores.length
+    ? `${Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)}%`
+    : "n/a";
+}
+
 function chartStatCard(label, value) {
   return `<div class="chart-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
@@ -385,7 +398,8 @@ async function saveSummaryEntry(row) {
   const payload = {
     classification: row.querySelector('[data-field="classification"]').value,
     confidenceLevel: row.querySelector('[data-field="confidenceLevel"]').value,
-    confidenceScore: row.querySelector('[data-field="confidenceScore"]').value,
+    geminiConfidenceScore: row.querySelector('[data-field="geminiConfidenceScore"]').value,
+    edgeImpulseConfidenceScore: row.querySelector('[data-field="edgeImpulseConfidenceScore"]').value,
     rationale: row.querySelector('[data-field="rationale"]').value
   };
 
@@ -1054,8 +1068,10 @@ async function loadConfig() {
     const response = await fetch("/api/config");
     const config = await response.json();
     cameraUrl.textContent = config.cameraLabel || "Laptop HD Camera";
+    if (aiModeLabel) aiModeLabel.textContent = config.aiMode || "Gemini + Edge Impulse";
   } catch (_error) {
     cameraUrl.textContent = "Laptop HD Camera";
+    if (aiModeLabel) aiModeLabel.textContent = "Gemini + Edge Impulse";
   }
 }
 

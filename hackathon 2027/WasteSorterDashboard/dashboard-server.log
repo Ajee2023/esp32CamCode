@@ -1,4 +1,5 @@
 Waste Sorter Dashboard running at http://localhost:3400
-Camera: http://192.168.137.156/capture
-ESP32-S3 control: http://192.168.137.108
+Camera source: Laptop HD Camera
+Legacy ESP32-CAM URL: http://192.168.137.9/capture
+ESP32-S3 control: http://192.168.137.38
 Gemini model: gemini-3.1-flash-lite
